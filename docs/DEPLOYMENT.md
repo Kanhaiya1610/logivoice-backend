@@ -24,6 +24,8 @@ storage are separate persistence services.
 The application creates the ignored local `instance/` directory automatically when it builds
 the default SQLite configuration. CI and local validation therefore work from a clean checkout
 without a committed database file or folder. Production uses the configured PostgreSQL URL.
+The migration environment and `wsgi.py` also create the SQLite parent directory as a defensive
+measure, and CI explicitly runs `mkdir -p instance` before migration validation.
 
 Run locally:
 
