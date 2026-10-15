@@ -25,9 +25,33 @@ jobs:
         run: python -m compileall -q app tests wsgi.py
       - name: Prepare local SQLite directory
         run: mkdir -p instance
-      - name: Validate application import and migrations
+      - name: Validate application import
         run: |
-          python -c "from wsgi import app; print(app.name)"
-          flask --app wsgi:app db check
+          python -c "
+          import sys
+          import traceback
+          try:
+              from wsgi import app
+              print('Application imported successfully:', app.name)
+          except BaseException:
+              traceback.print_exc()
+              sys.exit(1)
+          "
+      - name: Validate migrations
+        run: |
+          python - <<'PY'
+          import traceback
+          from flask.cli import cli
+
+          try:
+              cli.main(
+                  args=['--app', 'wsgi:app', 'db', 'check'],
+                  prog_name='flask',
+                  standalone_mode=False,
+              )
+          except BaseException:
+              traceback.print_exc()
+              raise
+          PY
       - name: Run tests
         run: pytest -q
