@@ -17,3 +17,6 @@ uploads/
 *.log
 .mypy_cache/
 .ruff_cache/
+
+# Windows setup utilities are local-only, not backend source.
+tesseract-ocr-w64-setup-*.exe

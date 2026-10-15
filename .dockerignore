@@ -11,3 +11,6 @@ instance
 storage
 uploads
 tests
+
+# Render installs Linux Tesseract; never copy the Windows installer into the image.
+tesseract-ocr-w64-setup-*.exe

@@ -13,7 +13,7 @@ class ProcessingError(Exception):
 
 
 def _configure_tesseract(pytesseract) -> None:
-    configured_path = os.getenv("TESSERACT_PATH")
+    configured_path = os.getenv("TESSERACT_PATH", "").strip()
     if configured_path:
         pytesseract.pytesseract.tesseract_cmd = configured_path
 

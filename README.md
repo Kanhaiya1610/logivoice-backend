@@ -41,7 +41,8 @@ flask --app wsgi:app run --debug
 ```
 
 The default development database and local files live below `instance/`, which is ignored
-by git. `SECRET_KEY` should be replaced for any shared environment. `DATABASE_URL` may be
+by git. The application creates `instance/` automatically on startup, so a clean checkout
+does not need a committed database directory. `SECRET_KEY` should be replaced for any shared environment. `DATABASE_URL` may be
 SQLite for local work or PostgreSQL in deployment; `postgres://` and `postgresql://` values
 are normalized to the installed psycopg 3 driver.
 
@@ -55,6 +56,7 @@ are normalized to the installed psycopg 3 driver.
 | `CORS_ORIGINS` | Comma-separated exact origins, such as the deployed frontend origin. |
 | `MAX_UPLOAD_SIZE_MB` | Request and per-file upload limit; default 25. |
 | `TOKEN_MAX_AGE_SECONDS` | Bearer token lifetime; default 3600. |
+| `TESSERACT_PATH` | Optional installed OCR executable path, not the Windows installer. Leave blank on Render Docker. |
 | `STORAGE_BACKEND` | `local` for development/tests or `s3` for persistent object storage. |
 | `STORAGE_ROOT` | Local storage directory. Do not use Render local disk for production. |
 | `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT_URL` | S3-compatible bucket and optional endpoint settings. |
@@ -81,7 +83,7 @@ Gemini or S3 services.
 
 ## Deployment
 
-`render.yaml` describes a Python Render web service and managed PostgreSQL database. Set
+`render.yaml` describes a Docker-based Flask Render web service and managed PostgreSQL database. Set
 the S3-compatible variables and the exact frontend origin before deployment. Render's
 filesystem is ephemeral; production must use `STORAGE_BACKEND=s3`. The start command runs
 `flask db upgrade` before Gunicorn. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).

@@ -60,7 +60,6 @@ def create_app(config: dict | None = None) -> Flask:
         pass
 
     app = Flask(__name__, instance_relative_config=True)
-    os.makedirs(app.instance_path, exist_ok=True)
     app.config.from_mapping(default_config(Path(app.instance_path)))
     if config:
         app.config.from_mapping(config)

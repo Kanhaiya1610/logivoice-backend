@@ -21,6 +21,10 @@ storage are separate persistence services.
 
 ## Migrations
 
+The application creates the ignored local `instance/` directory automatically when it builds
+the default SQLite configuration. CI and local validation therefore work from a clean checkout
+without a committed database file or folder. Production uses the configured PostgreSQL URL.
+
 Run locally:
 
 ```bash
@@ -45,6 +49,58 @@ Python dependencies. It does not install ffmpeg, zbar, or a spaCy model because 
 does not select server-side audio, barcode, or spaCy processing. Run it with PostgreSQL,
 S3-compatible storage, and the required environment variables; do not mount Docker local
 storage as the production document store.
+
+## Tesseract: Windows installer versus deployed OCR engine
+
+The file `tesseract-ocr-w64-setup-5.5.0.20241111.exe` is a Windows setup utility, not
+an application dependency or the OCR executable. Keep it outside this repository; do
+not upload it to GitHub or Render. Moving that installer does not change any backend
+path, but it also does not install Tesseract. Ignore rules exclude matching installers
+from Git and Docker builds as a safeguard.
+
+### Local Windows development
+
+Run the installer locally if Tesseract is not installed. In your local backend `.env`,
+set `TESSERACT_PATH` to the installed `tesseract.exe` if it is not on your system `PATH`.
+For example, only if this matches your actual installation directory:
+
+```dotenv
+TESSERACT_PATH="C:/Program Files/Tesseract-OCR/tesseract.exe"
+```
+
+Verify that executable in PowerShell:
+
+```powershell
+& "C:\Program Files\Tesseract-OCR\tesseract.exe" --version
+```
+
+Do not point `TESSERACT_PATH` at the `*-setup-*.exe` file. Do not copy a Windows path
+from your local `.env` into Render environment variables.
+
+### Render deployment
+
+`render.yaml` selects `runtime: docker`. During the image build, `Dockerfile` installs
+the Linux `tesseract-ocr` package with `apt-get` and verifies it using
+`tesseract --version`. It does not run or need the Windows installer. The package
+version comes from the container's Linux package repository, not the Windows filename.
+
+Leave `TESSERACT_PATH` unset or blank on Render. `pytesseract` finds the installed
+Linux `tesseract` command through the container's `PATH` (normally `/usr/bin/tesseract`).
+The backend calls it for image uploads and PDFs with no embedded text. Text-based PDFs
+use direct extraction first. The current OCR calls request English (`lang="eng"`).
+
+After deploying, use the Render service shell, where available, to check:
+
+```bash
+tesseract --version
+tesseract --list-langs
+python -c "import pytesseract; print(pytesseract.get_tesseract_version())"
+```
+
+Then upload a readable image or scanned PDF through the application to verify actual
+OCR. The health endpoint checks the database, not OCR extraction. Native Python Render
+deployments do not automatically run this Dockerfile; keep the Docker deployment type
+to retain its system-package installation.
 
 ## Troubleshooting
 

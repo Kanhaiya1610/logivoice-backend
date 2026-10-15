@@ -19,8 +19,18 @@ def _as_int(value: str | None, default: int) -> int:
         return default
 
 
+def _env(name: str, default: str = "") -> str:
+    """Read a string environment variable, treating blank values as missing."""
+
+    value = os.getenv(name)
+    if value is None:
+        return default
+    value = value.strip()
+    return value if value else default
+
+
 def _cors_origins() -> list[str]:
-    raw = os.getenv(
+    raw = _env(
         "CORS_ORIGINS",
         "http://localhost:5173,http://127.0.0.1:5173",
     )
@@ -28,7 +38,7 @@ def _cors_origins() -> list[str]:
 
 
 def _database_url(instance_path: Path) -> str:
-    configured = os.getenv("DATABASE_URL")
+    configured = _env("DATABASE_URL")
     if configured:
         # Render commonly supplies postgres:// while SQLAlchemy 2 expects an
         # explicit driver when psycopg 3 is installed.
@@ -43,26 +53,31 @@ def _database_url(instance_path: Path) -> str:
 def default_config(instance_path: Path) -> dict:
     """Return fresh defaults so tests can change environment between apps."""
 
-    environment = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")).lower()
+    # Flask's instance folder is ignored by git and is therefore absent on a
+    # clean CI checkout. Create it before constructing the default SQLite URL.
+    instance_path.mkdir(parents=True, exist_ok=True)
+
+    environment = _env("APP_ENV", _env("FLASK_ENV", "development")).lower()
     upload_mb = _as_int(os.getenv("MAX_UPLOAD_SIZE_MB"), 25)
-    storage_root = os.getenv("STORAGE_ROOT", str(instance_path / "storage"))
+    storage_root = _env("STORAGE_ROOT", str(instance_path / "storage"))
     return {
         "APP_ENV": environment,
-        "SECRET_KEY": os.getenv("SECRET_KEY", "local-development-only-change-me"),
+        "SECRET_KEY": _env("SECRET_KEY", "local-development-only-change-me"),
         "SQLALCHEMY_DATABASE_URI": _database_url(instance_path),
         "SQLALCHEMY_TRACK_MODIFICATIONS": False,
         "MAX_CONTENT_LENGTH": upload_mb * 1024 * 1024,
         "MAX_UPLOAD_SIZE_BYTES": upload_mb * 1024 * 1024,
         "CORS_ORIGINS": _cors_origins(),
         "TOKEN_MAX_AGE_SECONDS": _as_int(os.getenv("TOKEN_MAX_AGE_SECONDS"), 3600),
-        "STORAGE_BACKEND": os.getenv("STORAGE_BACKEND", "local").lower(),
+        "STORAGE_BACKEND": _env("STORAGE_BACKEND", "local").lower(),
         "STORAGE_ROOT": storage_root,
-        "S3_BUCKET": os.getenv("S3_BUCKET", ""),
-        "S3_REGION": os.getenv("S3_REGION", ""),
-        "S3_ENDPOINT_URL": os.getenv("S3_ENDPOINT_URL", ""),
-        "S3_ACCESS_KEY_ID": os.getenv("S3_ACCESS_KEY_ID", ""),
-        "S3_SECRET_ACCESS_KEY": os.getenv("S3_SECRET_ACCESS_KEY", ""),
-        "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
-        "GEMINI_MODEL": os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
+        "S3_BUCKET": _env("S3_BUCKET"),
+        "S3_REGION": _env("S3_REGION"),
+        "S3_ENDPOINT_URL": _env("S3_ENDPOINT_URL"),
+        "S3_ACCESS_KEY_ID": _env("S3_ACCESS_KEY_ID"),
+        "S3_SECRET_ACCESS_KEY": _env("S3_SECRET_ACCESS_KEY"),
+        "GEMINI_API_KEY": _env("GEMINI_API_KEY"),
+        "GEMINI_MODEL": _env("GEMINI_MODEL", "gemini-1.5-flash"),
+        "TESSERACT_PATH": _env("TESSERACT_PATH"),
         "JSON_SORT_KEYS": False,
     }

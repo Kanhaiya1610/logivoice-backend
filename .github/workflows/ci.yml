@@ -7,6 +7,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      APP_ENV: testing
+      SECRET_KEY: ci-only-test-secret
+      DATABASE_URL: sqlite:///instance/logivoice.db
+      CORS_ORIGINS: http://localhost:5173
+      STORAGE_BACKEND: local
+      STORAGE_ROOT: instance/storage
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
