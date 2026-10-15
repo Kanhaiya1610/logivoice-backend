@@ -39,6 +39,10 @@ jobs:
           "
       - name: Validate migrations
         run: |
+          # 1. Bring the blank CI database up to date with existing migrations
+          python -m flask --app wsgi:app db upgrade
+          
+          # 2. Run your verification script to ensure no models deviate
           python - <<'PY'
           import traceback
           from flask.cli import cli
