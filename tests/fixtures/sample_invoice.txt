@@ -1,0 +1,19 @@
+Invoice No.: 1234
+Customer Name: John Doe
+Delivery Address: 123 Main St, Springfield
+Product List:
+Widget A 10 pcs
+Widget B 5 pcs
+
+Invoice No.: 5678
+Customer Name: Jane Smith
+Delivery Address: 456 Elm St, Shelbyville
+Product List:
+Widget C 7 pcs
+Widget D 3 pcs
+
+Invoice No.: 4321
+Customer Name: John Doe
+Delivery Address: 789 Oak St, Capital City
+Product List:
+Widget E 2 pcs

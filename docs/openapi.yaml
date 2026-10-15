@@ -1,0 +1,239 @@
+openapi: 3.0.3
+info:
+  title: LogiVoice API
+  version: 1.0.0
+  description: Versioned REST API for authenticated logistics document processing.
+servers:
+  - url: https://{backend-host}/api/v1
+    variables:
+      backend-host:
+        default: api.example.com
+  - url: http://localhost:5000/api/v1
+tags:
+  - name: Health
+  - name: Authentication
+  - name: Documents
+  - name: Search
+  - name: Chat
+  - name: Analytics
+paths:
+  /health:
+    get:
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Healthy API and database.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessResponse' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /auth/register:
+    post:
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /auth/login:
+    post:
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/me:
+    get:
+      tags: [Authentication]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /documents:
+    get:
+      tags: [Documents]
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PerPage' }
+        - { name: q, in: query, schema: { type: string, maxLength: 300 } }
+        - { name: status, in: query, schema: { type: string, enum: [processing, processed, failed] } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Documents]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: PDF, PNG, JPG/JPEG, or UTF-8 TXT files.
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /documents/{document_id}:
+    parameters:
+      - { $ref: '#/components/parameters/DocumentId' }
+    get:
+      tags: [Documents]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Documents]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /documents/{document_id}/download:
+    parameters:
+      - { $ref: '#/components/parameters/DocumentId' }
+    get:
+      tags: [Documents]
+      responses:
+        '200':
+          description: Authenticated source document.
+          content:
+            application/octet-stream: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /search:
+    post:
+      tags: [Search]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [q]
+              properties:
+                q: { type: string, maxLength: 300 }
+                status: { type: string, enum: [processing, processed, failed] }
+                page: { type: integer, minimum: 1, default: 1 }
+                per_page: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /chat:
+    post:
+      tags: [Chat]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [document_id, question]
+              properties:
+                document_id: { type: integer }
+                question: { type: string, minLength: 1, maxLength: 2000 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /analytics/overview:
+    get:
+      tags: [Analytics]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: signed-token
+  parameters:
+    DocumentId:
+      name: document_id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PerPage:
+      name: per_page
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        name: { type: string, maxLength: 120 }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    SuccessResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { type: object, additionalProperties: true }
+        message: { type: string }
+        meta: { type: object, additionalProperties: true }
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, example: false }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+  responses:
+    Success: { description: Successful request, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+    BadRequest: { description: Validation error, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    Unauthorized: { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    Conflict: { description: Resource conflict, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    NotFound: { description: Resource not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    PayloadTooLarge: { description: Upload exceeds limit, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    RateLimited: { description: Rate limit exceeded, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    Unprocessable: { description: Request cannot be processed, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    ServiceUnavailable: { description: Dependency unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+security:
+  - bearerAuth: []
