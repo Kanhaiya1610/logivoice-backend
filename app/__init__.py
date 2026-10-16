@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-import os
 from pathlib import Path
 
 from flask import Flask
@@ -11,37 +9,11 @@ from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import default_config
+from .diagnostics import configure_logging, install_request_diagnostics, log_chat_configuration
 from .errors import register_error_handlers
 from .extensions import db, migrate
 from .api.v1 import api_v1
 from .services.storage import build_storage
-
-
-def _configure_logging(app: Flask) -> None:
-    """Configure concise JSON logs suitable for local and Render deployment."""
-
-    class JsonFormatter(logging.Formatter):
-        def format(self, record: logging.LogRecord) -> str:
-            import json
-            from datetime import datetime, timezone
-
-            return json.dumps(
-                {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "level": record.levelname,
-                    "logger": record.name,
-                    "message": record.getMessage(),
-                },
-                ensure_ascii=False,
-            )
-
-    handler = logging.StreamHandler()
-    handler.setFormatter(JsonFormatter())
-    app.logger.handlers.clear()
-    app.logger.addHandler(handler)
-    app.logger.setLevel(logging.INFO)
-    logging.getLogger("werkzeug").handlers.clear()
-    logging.getLogger("werkzeug").addHandler(handler)
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -79,7 +51,9 @@ def create_app(config: dict | None = None) -> Flask:
         if not any(origin not in local_origins for origin in origins):
             raise RuntimeError("Production CORS_ORIGINS must contain the deployed frontend origin, not only localhost")
 
-    _configure_logging(app)
+    configure_logging(app)
+    install_request_diagnostics(app)
+    log_chat_configuration(app)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     db.init_app(app)
@@ -91,6 +65,7 @@ def create_app(config: dict | None = None) -> Flask:
         resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}},
         supports_credentials=False,
         allow_headers=["Content-Type", "Authorization"],
+        expose_headers=["X-Request-ID"],
         methods=["GET", "POST", "DELETE", "OPTIONS"],
     )
 

@@ -164,7 +164,9 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/Unprocessable' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/BadGateway' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
   /analytics/overview:
     get:
       tags: [Analytics]
@@ -234,6 +236,8 @@ components:
     PayloadTooLarge: { description: Upload exceeds limit, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     RateLimited: { description: Rate limit exceeded, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     Unprocessable: { description: Request cannot be processed, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    BadGateway: { description: "Chat provider failed; safe error details include reason, retryable, and request_id", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     ServiceUnavailable: { description: Dependency unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    GatewayTimeout: { description: Chat provider timed out, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
 security:
   - bearerAuth: []

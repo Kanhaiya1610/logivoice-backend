@@ -18,7 +18,8 @@ from ..errors import APIError
 from ..extensions import db
 from ..models import Document, User
 from ..responses import success_response
-from ..services.chat import ChatProviderUnavailable, answer_question
+from ..services.chat import ChatProviderError, ChatProviderUnavailable, answer_question
+from ..diagnostics import safe_model_name
 from ..services.processing import (
     EXTENSION_MIME,
     ProcessingError,
@@ -361,10 +362,32 @@ def chat():
     try:
         answer = answer_question(document.extracted_text, question.strip(), current_app.config)
     except ChatProviderUnavailable as error:
-        raise APIError("provider_unavailable", "Gemini chat is not configured or unavailable.", 503) from error
-    except RuntimeError as error:
-        current_app.logger.warning("Gemini chat request failed: %s", error)
-        raise APIError("provider_error", "The chat provider could not answer the request.", 502) from error
+        current_app.logger.warning("chat_provider_failed", extra={"diagnostic": {
+            "provider": "gemini", "model": safe_model_name(current_app.config),
+            "reason": error.reason, "provider_status": None,
+            "error_type": error.exception_type or type(error).__name__, "retryable": False,
+        }})
+        raise APIError("provider_unavailable", "Gemini chat is not configured or unavailable.", 503,
+                       {"reason": error.reason, "request_id": g.request_id, "retryable": False}) from None
+    except ChatProviderError as error:
+        current_app.logger.warning("chat_provider_failed", extra={"diagnostic": {
+            "provider": "gemini", "model": safe_model_name(current_app.config),
+            "reason": error.reason, "provider_status": error.provider_status,
+            "error_type": error.exception_type, "retryable": error.retryable,
+        }})
+        message, status = {
+            "model_not_found": ("The configured chat model is unavailable. Contact the administrator.", 502),
+            "invalid_request": ("The chat provider rejected the request. Contact the administrator.", 502),
+            "authentication_failed": ("Chat provider authentication failed. Contact the administrator.", 502),
+            "permission_denied": ("The chat provider denied access. Contact the administrator.", 502),
+            "quota_exceeded": ("Chat quota or rate limit reached. Please try again later.", 503),
+            "service_unavailable": ("The chat provider is temporarily unavailable. Please try again later.", 503),
+            "timeout": ("The chat provider timed out. Please try again.", 504),
+            "empty_response": ("The chat provider returned no usable answer. Try rephrasing the question.", 502),
+        }.get(error.reason, ("The chat provider could not answer the request.", 502))
+        raise APIError("provider_error", message, status,
+                       {"reason": error.reason, "request_id": g.request_id,
+                        "retryable": error.retryable}) from None
     return success_response({"answer": answer, "document_id": document.id})
 
 

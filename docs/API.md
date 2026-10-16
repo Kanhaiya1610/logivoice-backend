@@ -58,7 +58,11 @@ produce a failed status rather than a fabricated result.
 
 Document IDs from another user are returned as 404 to avoid resource enumeration. Missing
 or malformed bearer tokens return 401. Chat returns 503 when Gemini is not configured,
-502 for a provider request failure, and 422 when the selected document has no text.
+503 for provider quota/service unavailability, 504 for provider timeout, 502 for other provider
+request failures, and 422 when the selected document has no text. Provider errors include
+safe `details.reason`, `details.retryable`, and `details.request_id` fields. Each response
+also carries a server-generated `X-Request-ID` header, exposed through CORS for the frontend.
+These fields never include raw provider messages, keys, or document contents.
 
 The original prototype exposed unversioned `/api/upload`, `/api/chat`, and history routes.
 They are intentionally not aliases in this independent MVP; clients should migrate to the

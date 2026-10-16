@@ -77,7 +77,8 @@ def default_config(instance_path: Path) -> dict:
         "S3_ACCESS_KEY_ID": _env("S3_ACCESS_KEY_ID"),
         "S3_SECRET_ACCESS_KEY": _env("S3_SECRET_ACCESS_KEY"),
         "GEMINI_API_KEY": _env("GEMINI_API_KEY"),
-        "GEMINI_MODEL": _env("GEMINI_MODEL", "gemini-1.5-flash"),
+        "GEMINI_MODEL": _env("GEMINI_MODEL", "gemini-2.5-flash"),
+        "GEMINI_TIMEOUT_SECONDS": max(1, min(25, _as_int(os.getenv("GEMINI_TIMEOUT_SECONDS"), 20))),
         "TESSERACT_PATH": _env("TESSERACT_PATH"),
         "JSON_SORT_KEYS": False,
     }

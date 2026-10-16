@@ -61,7 +61,8 @@ are normalized to the installed psycopg 3 driver.
 | `STORAGE_ROOT` | Local storage directory. Do not use Render local disk for production. |
 | `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT_URL` | S3-compatible bucket and optional endpoint settings. |
 | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Optional explicit S3 credentials; platform credentials may also be used. |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | Optional server-side Gemini configuration. Without a key chat returns 503. |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | Optional server-side Gemini configuration using the supported `google-genai` SDK. Without a key chat returns 503. |
+| `GEMINI_TIMEOUT_SECONDS` | Provider timeout, default 20 seconds, bounded to 1-25 seconds; no automatic SDK retries. |
 
 Tesseract is an operating-system dependency for image and scanned-PDF OCR. Install it locally
 and make `tesseract` available on `PATH`, or set `TESSERACT_PATH` to the executable. The
@@ -80,6 +81,8 @@ pytest -q
 The suite covers health, authentication, ownership boundaries, TXT processing, search and
 pagination, upload validation, and unavailable Gemini behavior. It does not call external
 Gemini or S3 services.
+Chat diagnostics tests also mock provider errors, check request-ID correlation, and verify
+that keys, document contents, questions, and raw provider errors do not enter chat logs.
 
 ## Deployment
 
