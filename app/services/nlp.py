@@ -199,10 +199,17 @@ _NEXT_LABEL_RE = re.compile(
 )
 _JUNK_LABEL_VALUES = {"-", "--", "n/a", "na", "none", "null", "unknown"}
 _GENERIC_ENTITY_VALUES = {
-    "pdf", "title", "hello world", "qr codes", "qr code", "example", "example 1",
+    "pdf", "title", "hello world", "hello world example", "qr codes", "qr code", "example", "example 1",
     "example 2", "example 3", "square", "state", "zip", "owner", "address",
-    "mobil phone", "mobile phone", "phone", "work phone",
+    "mobil phone", "mobile phone", "phone", "work phone", "parks", "last e-mail",
 }
+_NOISY_PERSON_WORDS = {
+    "first", "last", "name", "email", "e-mail", "phone", "mobile", "mobil", "work",
+    "title", "address", "state", "zip", "owner", "example", "parks", "square",
+}
+_PERSON_NAME_RE = re.compile(
+    r"^[A-Z][A-Za-z.'-]{1,40}(?:\s+[A-Z][A-Za-z.'-]{1,40})+$"
+)
 _STREET_RE = re.compile(
     r"\b(?:street|st\.?|road|rd\.?|avenue|ave\.?|boulevard|blvd\.?|lane|ln\.?|drive|dr\.?)\b",
     re.IGNORECASE,
@@ -277,7 +284,22 @@ def _spacy_entities(text: str, nlp: Any) -> dict[str, Any] | None:
                     continue
                 if raw_value.casefold() in _GENERIC_ENTITY_VALUES:
                     continue
-                if bucket == "people" and (raw_value.startswith("") or "square" in raw_value.casefold()):
+                if bucket == "people":
+                    words = {word.casefold().strip(".,:;()") for word in raw_value.split()}
+                    if (
+                        raw_value.startswith("")
+                        or "square" in raw_value.casefold()
+                        or any(word in _NOISY_PERSON_WORDS for word in words)
+                        or re.search(r"\d", raw_value)
+                        or not _PERSON_NAME_RE.fullmatch(raw_value)
+                    ):
+                        continue
+                if bucket == "organizations" and (
+                    "hello world" in raw_value.casefold()
+                    or "example" in raw_value.casefold()
+                    or "qr code" in raw_value.casefold()
+                    or raw_value.casefold() in _GENERIC_ENTITY_VALUES
+                ):
                     continue
                 if bucket == "locations" and (
                     ":" in raw_value
