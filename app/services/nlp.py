@@ -132,7 +132,7 @@ _MONTHS = (
 _DATE_RE = re.compile(
     rf"\b(?:"
     rf"\d{{4}}[-/.]\d{{1,2}}[-/.]\d{{1,2}}|"
-    rf"(?:{_MONTHS})\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,\s*|\s+)\d{{4}}|"
+    rf"(?:{_MONTHS})\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,\s*\d{{4}}|\s+\d{{4}})?|"
     rf"\d{{1,2}}\s+(?:{_MONTHS})\s+\d{{4}}|"
     rf"\d{{1,2}}[/-]\d{{1,2}}[/-]\d{{2,4}}"
     rf")\b",
@@ -151,6 +151,10 @@ _PHONE_RE = re.compile(
     r")?(?:\(\d{2,4}\)|\d{2,4})[\s.-]\d{3,4}[\s.-]\d{3,4}"
     r"(?:\s*(?:ext\.?|x)\s*\d{1,5})?(?![\w])|"
     r"(?<![\w])\+?\d{10,15}(?![\w])"
+)
+_PERSON_LABEL_RE = re.compile(
+    r"(?i)(?P<label>first\s+name|last\s+name|owner(?:\s+name)?|by)\s*[:=-]?\s*"
+    r"(?P<value>[^\r\n,]+)"
 )
 
 _ORGANIZATION_LABELS = (
@@ -175,16 +179,34 @@ _ALL_LABELS = tuple(dict.fromkeys(_ORGANIZATION_LABELS + _LOCATION_LABELS))
 _LABEL_ALTERNATION = "|".join(
     re.escape(label) for label in sorted(_ALL_LABELS, key=len, reverse=True)
 )
+_BOUNDARY_LABELS = tuple(dict.fromkeys(
+    _ALL_LABELS + (
+        "title", "first name", "last name", "email", "e-mail", "work phone",
+        "mobile phone", "mobil phone", "phone", "address", "state", "zip", "notes",
+    )
+))
+_BOUNDARY_ALTERNATION = "|".join(
+    re.escape(label) for label in sorted(_BOUNDARY_LABELS, key=len, reverse=True)
+)
 _LABEL_RE = re.compile(
     rf"(?<![\w])(?P<label>{_LABEL_ALTERNATION})[ \t]*(?:[:=]|-)[ \t]*"
     rf"(?P<value>[^\r\n;]+)",
     re.IGNORECASE,
 )
 _NEXT_LABEL_RE = re.compile(
-    rf"[ \t,]+(?=(?:{_LABEL_ALTERNATION})[ \t]*(?:[:=]|-))",
+    rf"[ \t,]+(?=(?:{_BOUNDARY_ALTERNATION})[ \t]*(?:[:=]|-))",
     re.IGNORECASE,
 )
 _JUNK_LABEL_VALUES = {"-", "--", "n/a", "na", "none", "null", "unknown"}
+_GENERIC_ENTITY_VALUES = {
+    "pdf", "title", "hello world", "qr codes", "qr code", "example", "example 1",
+    "example 2", "example 3", "square", "state", "zip", "owner", "address",
+    "mobil phone", "mobile phone", "phone", "work phone",
+}
+_STREET_RE = re.compile(
+    r"\b(?:street|st\.?|road|rd\.?|avenue|ave\.?|boulevard|blvd\.?|lane|ln\.?|drive|dr\.?)\b",
+    re.IGNORECASE,
+)
 
 
 def _label_value(value: str) -> str:
@@ -195,7 +217,12 @@ def _label_value(value: str) -> str:
 
 
 def _is_usable_label_value(value: str) -> bool:
-    return bool(value and value.casefold() not in _JUNK_LABEL_VALUES and re.search(r"\w", value))
+    return bool(
+        value
+        and value.casefold() not in _JUNK_LABEL_VALUES
+        and value.casefold() not in _GENERIC_ENTITY_VALUES
+        and re.search(r"\w", value)
+    )
 
 
 def _regex_entities(text: str) -> dict[str, Any]:
@@ -209,6 +236,18 @@ def _regex_entities(text: str) -> dict[str, Any]:
         _append_unique(result, "urls", match.group(0).rstrip(".,;:!?)]}"))
     for match in _PHONE_RE.finditer(text):
         _append_unique(result, "phones", match.group(0).strip())
+
+    first_name = re.search(r"(?i)first\s+name\s*[:=-]\s*([A-Z][A-Za-z.'-]{1,40})", text)
+    last_name = re.search(r"(?i)last\s+name\s*[:=-]\s*([A-Z][A-Za-z.'-]{1,40})", text)
+    if first_name and last_name:
+        _append_unique(result, "people", f"{first_name.group(1)} {last_name.group(1)}")
+    for match in _PERSON_LABEL_RE.finditer(text):
+        if match.group("label").casefold() in {"first name", "last name"} and first_name and last_name:
+            continue
+        value = _label_value(match.group("value"))
+        value = re.sub(r"^(?:owner|name)\s*[:=-]\s*", "", value, flags=re.IGNORECASE)
+        if value.casefold() not in _GENERIC_ENTITY_VALUES:
+            _append_unique(result, "people", value)
 
     organization_labels = {label.casefold() for label in _ORGANIZATION_LABELS}
     for match in _LABEL_RE.finditer(text):
@@ -230,7 +269,23 @@ def _spacy_entities(text: str, nlp: Any) -> dict[str, Any] | None:
             label = str(getattr(entity, "label_", getattr(entity, "label", ""))).upper()
             bucket = _SPACY_LABELS.get(label)
             if bucket:
-                _append_unique(result, bucket, getattr(entity, "text", ""))
+                raw_value = _clean_value(getattr(entity, "text", ""))
+                if bucket == "dates":
+                    date_values = [match.group(0) for match in _DATE_RE.finditer(raw_value)]
+                    for date_value in date_values:
+                        _append_unique(result, bucket, date_value)
+                    continue
+                if raw_value.casefold() in _GENERIC_ENTITY_VALUES:
+                    continue
+                if bucket == "people" and (raw_value.startswith("") or "square" in raw_value.casefold()):
+                    continue
+                if bucket == "locations" and (
+                    ":" in raw_value
+                    or _STREET_RE.search(raw_value)
+                    or raw_value.casefold() in {"hardwood", "state", "zip"}
+                ):
+                    continue
+                _append_unique(result, bucket, raw_value.lstrip("•*- "))
         return result
     except Exception:
         return None
@@ -317,6 +372,13 @@ _CLASSIFICATION_RULES = {
         (r"\bmerchant\b", 2),
         (r"\b(?:cash|credit\s+card)\b", 1),
     ),
+    "QR/Barcode Reference": (
+        (r"qr\s*code", 6),
+        (r"barcode\s+samples?|bar\s*code", 6),
+        (r"printable\s+v[- ]?card|v[- ]?card", 4),
+        (r"form\s+field", 2),
+        (r"qrcode", 3),
+    ),
 }
 _FILENAME_HINTS = {
     "Invoice": r"invoice|bill",
@@ -325,6 +387,7 @@ _FILENAME_HINTS = {
     "Purchase Order": r"purchase[-_ ]?order|(?:^|[-_ .])po(?:[-_ .]|$)",
     "Resume/CV": r"resume|curriculum[-_ ]?vitae|(?:^|[-_ .])cv(?:[-_ .]|$)",
     "Receipt": r"receipt|payment",
+    "QR/Barcode Reference": r"qr|barcode|qrcode|v[-_ ]?card",
 }
 
 

@@ -215,7 +215,28 @@ def _first_match(patterns: list[str], text: str) -> str | None:
     return None
 
 
-def extract_fields(text: str) -> dict:
+_NON_VALUE_LABELS = {
+    "address", "mobil phone", "mobile phone", "phone", "work phone", "title",
+    "state", "zip", "city", "country", "notes", "customer", "organization",
+}
+
+
+def _usable_field_value(value: str | None) -> str | None:
+    if not value:
+        return None
+    cleaned = re.split(
+        r"\s+(?=(?:title|first name|last name|email|e-mail|work phone|mobile phone|mobil phone|phone|address|state|zip|notes)\s*[:=-])",
+        value,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" \t:.-,#")
+    if not cleaned or cleaned.casefold() in _NON_VALUE_LABELS:
+        return None
+    return cleaned
+
+
+def extract_fields(text: str, entities: dict | None = None) -> dict:
     invoice_number = _first_match(
         [
             r"(?:invoice\s*(?:number|no\.?|#)?|bill\s*(?:number|no\.?|#))\s*[:.-]?\s*([A-Z0-9][A-Z0-9/_-]{2,})",
@@ -239,31 +260,26 @@ def extract_fields(text: str) -> dict:
         ],
         text,
     )
-    organizations = re.findall(
-        r"(?:company|organization|vendor|supplier|carrier|from)\s*[:.-]\s*([^\n]+)",
-        text,
-        flags=re.IGNORECASE,
-    )
-    locations = re.findall(
-        r"(?:city|country|port|warehouse|location)\s*[:.-]\s*([^\n]+)",
-        text,
-        flags=re.IGNORECASE,
-    )
+    entities = entities or extract_entities(text)
+    address = _usable_field_value(address)
+    customer_name = _usable_field_value(customer_name)
+    date_value = _usable_field_value(date_value)
     return {
         "invoice_number": invoice_number,
         "customer_name": customer_name,
         "address": address,
         "date": date_value,
-        "organizations": [value.strip() for value in organizations if value.strip()],
-        "locations": [value.strip() for value in locations if value.strip()],
+        "organizations": entities.get("organizations", []),
+        "locations": entities.get("locations", []),
     }
 
 
 def process_content(content: bytes, suffix: str, filename: str = "") -> dict:
     text = extract_text(content, suffix)
     classification, confidence = classify_document(text, filename=filename)
-    fields = extract_fields(text)
-    fields["entities"] = extract_entities(text)
+    entities = extract_entities(text)
+    fields = extract_fields(text, entities=entities)
+    fields["entities"] = entities
     if suffix == ".pdf":
         fields["barcodes"] = decode_pdf(content)
     elif suffix in {".png", ".jpg", ".jpeg"}:

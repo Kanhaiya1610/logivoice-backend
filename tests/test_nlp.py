@@ -123,3 +123,33 @@ def test_weak_content_and_filename_hint_return_unknown():
 
     assert label == "Unknown"
     assert 0.0 <= confidence < 0.5
+
+
+def test_qr_reference_content_has_a_specific_classification():
+    label, confidence = nlp_service.classify_document(
+        "QR Code Samples\nExample #1, Fixed Text\nExample #2, Printable V-Card\nBarcode fields",
+        filename="QRCodeFieldExamples.pdf",
+    )
+
+    assert label == "QR/Barcode Reference"
+    assert confidence > 0.5
+
+
+def test_noisy_spacy_layout_entities_are_filtered_and_dates_are_normalized():
+    class FakeNLP:
+        def __call__(self, _text):
+            return SimpleNamespace(ents=[
+                SimpleNamespace(text="two full Sunday, July 1", label_="DATE"),
+                SimpleNamespace(text="PDF", label_="ORG"),
+                SimpleNamespace(text="WindJack Solutions, Inc.", label_="ORG"),
+                SimpleNamespace(text="Main St. Buffalo", label_="GPE"),
+                SimpleNamespace(text=" Square", label_="PERSON"),
+                SimpleNamespace(text="Jeff Smith", label_="PERSON"),
+            ])
+
+    entities = nlp_service.extract_entities("layout text", nlp=FakeNLP())
+
+    assert entities["dates"] == ["July 1"]
+    assert entities["organizations"] == ["WindJack Solutions, Inc"]
+    assert entities["locations"] == []
+    assert entities["people"] == ["Jeff Smith"]
