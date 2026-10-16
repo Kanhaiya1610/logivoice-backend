@@ -7,6 +7,9 @@ import os
 import re
 from datetime import datetime, timezone
 
+from .barcode import decode_image, decode_pdf
+from .nlp import classify_document, extract_entities
+
 
 class ProcessingError(Exception):
     """The selected document processor is unavailable or failed."""
@@ -197,18 +200,9 @@ CLASSIFICATION_KEYWORDS = {
 
 
 def classify_text(text: str) -> tuple[str, float]:
-    lowered = text.lower()
-    scores = {
-        label: sum(weight for keyword, weight in words.items() if keyword in lowered)
-        for label, words in CLASSIFICATION_KEYWORDS.items()
-    }
-    ordered = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-    best_label, best_score = ordered[0]
-    second_score = ordered[1][1]
-    confidence = best_score / (best_score + second_score + 1) if best_score else 0.0
-    if best_score < 2 or confidence < 0.55:
-        return "Unknown", round(confidence, 4)
-    return best_label, round(min(confidence, 0.99), 4)
+    """Backward-compatible wrapper around the broader content classifier."""
+
+    return classify_document(text)
 
 
 def _first_match(patterns: list[str], text: str) -> str | None:
@@ -265,12 +259,18 @@ def extract_fields(text: str) -> dict:
     }
 
 
-def process_content(content: bytes, suffix: str) -> dict:
+def process_content(content: bytes, suffix: str, filename: str = "") -> dict:
     text = extract_text(content, suffix)
-    classification, confidence = classify_text(text)
+    classification, confidence = classify_document(text, filename=filename)
+    fields = extract_fields(text)
+    fields["entities"] = extract_entities(text)
+    if suffix == ".pdf":
+        fields["barcodes"] = decode_pdf(content)
+    elif suffix in {".png", ".jpg", ".jpeg"}:
+        fields["barcodes"] = decode_image(content)
     return {
         "extracted_text": text,
-        "extracted_fields": extract_fields(text),
+        "extracted_fields": fields,
         "classification": classification,
         "classification_confidence": confidence,
     }

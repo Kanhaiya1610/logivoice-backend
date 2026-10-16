@@ -211,7 +211,7 @@ def upload_documents():
                 status="processing",
             )
             try:
-                result = process_content(content, suffix)
+                result = process_content(content, suffix, filename=safe_name)
                 document.extracted_text = result["extracted_text"]
                 document.extracted_fields = result["extracted_fields"]
                 document.classification = result["classification"]

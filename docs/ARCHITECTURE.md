@@ -17,8 +17,9 @@ Versioned blueprint -> bearer auth -> ownership-scoped query
         +--> storage adapter -> local files (development/tests)
         |                      S3-compatible object storage (production)
         |
-        +--> synchronous processor -> TXT / PDF text / image OCR
-                              -> fields + deterministic classification
+         +--> synchronous processor -> TXT / PDF text / image OCR
+                               -> spaCy/regex entities + classification
+                               -> optional QR/barcode decoding
 ```
 
 ## Application boundaries
@@ -31,8 +32,13 @@ Versioned blueprint -> bearer auth -> ownership-scoped query
 - `app/auth.py` creates `itsdangerous` timed tokens. A token contains only a user ID and
   token version. Passwords are hashed with Werkzeug. Logout increments the token version,
   invalidating issued tokens for that account; expiry remains enforced by the signature.
-- `app/services/processing.py` keeps extraction and deterministic NLP independent from
-  HTTP. Classification returns `Unknown` for weak evidence rather than forcing a category.
+- `app/services/processing.py` keeps extraction, NLP, classification, and barcode decoding
+  independent from HTTP. spaCy is loaded lazily when its small model is installed; regex
+  fallback remains available. Classification returns `Unknown` for weak evidence rather than
+  forcing a category.
+- `app/services/nlp.py` returns JSON-safe people, organization, location, date, contact, and
+  URL entities. `app/services/barcode.py` decodes QR/barcode symbols from images and rasterized
+  PDF pages when `pyzbar` and the system ZBar library are available.
 - `app/services/storage.py` provides the local and optional S3-compatible implementations.
   The factory rejects local storage in `APP_ENV=production` to avoid treating Render's
   ephemeral disk as durable storage.
@@ -51,6 +57,7 @@ local development and tests.
 Processing is synchronous for the MVP. A document is persisted with `processing`, then
 becomes `processed` or `failed` with a safe status message. Direct text extraction is used
 for PDFs first; pages without embedded text are rasterized and sent through Tesseract OCR.
-Image OCR also requires the Tesseract executable. Search is indexed ownership filtering plus
+Image OCR also requires the Tesseract executable. QR/barcode detection is best-effort and does
+not fail a document when ZBar is unavailable. Search is indexed ownership filtering plus
 SQL `LIKE` queries over filename, extracted text, classification, and serialized extracted
 fields; there is no vector index.

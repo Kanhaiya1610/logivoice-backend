@@ -35,6 +35,8 @@ services:
         value: gemini-2.5-flash
       - key: GEMINI_TIMEOUT_SECONDS
         value: "20"
+      - key: NLP_MODEL
+        value: en_core_web_sm
 
 databases:
   - name: logivoice-db

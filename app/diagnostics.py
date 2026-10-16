@@ -61,7 +61,7 @@ def install_request_diagnostics(app) -> None:
         # Generate rather than trusting caller-supplied IDs or arbitrary log text.
         g.request_id = uuid4().hex
         g.request_started_at = perf_counter()
-        if request.endpoint == "api_v1.chat":
+        if request.endpoint == "api_v1.chat" and request.method != "OPTIONS":
             app.logger.info("chat_request_started", extra={"diagnostic": {
                 "route": "/api/v1/chat", "method": request.method,
             }})

@@ -57,6 +57,7 @@ are normalized to the installed psycopg 3 driver.
 | `MAX_UPLOAD_SIZE_MB` | Request and per-file upload limit; default 25. |
 | `TOKEN_MAX_AGE_SECONDS` | Bearer token lifetime; default 3600. |
 | `TESSERACT_PATH` | Optional installed OCR executable path, not the Windows installer. Leave blank on Render Docker. |
+| `NLP_MODEL` | Installed spaCy model name; default `en_core_web_sm`. The Render Docker build downloads it once. |
 | `STORAGE_BACKEND` | `local` for development/tests or `s3` for persistent object storage. |
 | `STORAGE_ROOT` | Local storage directory. Do not use Render local disk for production. |
 | `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT_URL` | S3-compatible bucket and optional endpoint settings. |
@@ -66,9 +67,11 @@ are normalized to the installed psycopg 3 driver.
 
 Tesseract is an operating-system dependency for image and scanned-PDF OCR. Install it locally
 and make `tesseract` available on `PATH`, or set `TESSERACT_PATH` to the executable. The
-provided Dockerfile installs and verifies `tesseract-ocr`. This MVP does not select spaCy,
-zbar, or server-side audio transcription, so their model/binary packages are intentionally
-absent.
+provided Dockerfile installs and verifies `tesseract-ocr`. This MVP does not select server-side
+audio transcription. The Docker image also installs `libzbar0` for optional QR/barcode decoding
+and downloads spaCy's small `en_core_web_sm` model during the image build. If either optional
+dependency is unavailable, OCR/text processing still completes with regex/entity fallback
+and an empty barcode list.
 
 ## Tests
 

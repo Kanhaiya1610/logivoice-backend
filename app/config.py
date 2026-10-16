@@ -80,5 +80,6 @@ def default_config(instance_path: Path) -> dict:
         "GEMINI_MODEL": _env("GEMINI_MODEL", "gemini-2.5-flash"),
         "GEMINI_TIMEOUT_SECONDS": max(1, min(25, _as_int(os.getenv("GEMINI_TIMEOUT_SECONDS"), 20))),
         "TESSERACT_PATH": _env("TESSERACT_PATH"),
+        "NLP_MODEL": _env("NLP_MODEL", "en_core_web_sm"),
         "JSON_SORT_KEYS": False,
     }

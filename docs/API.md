@@ -49,10 +49,13 @@ decodability, and UTF-8 for text. A bad file returns 400; an oversized request/f
 returns 413. Each accepted file gets a generated storage key. Processing is synchronous,
 so the response includes `processed` or `failed` status and any safe processing message.
 
-Classification labels are `Invoice`, `Delivery Note`, `Packing Slip`, `Purchase Order`,
-or `Unknown`. Low-evidence text receives `Unknown`. Regex fields include invoice number,
-customer, address, date, organizations, and locations; unavailable extraction dependencies
-produce a failed status rather than a fabricated result.
+Classification labels include `Invoice`, `Delivery Note`, `Packing Slip`, `Purchase Order`,
+`Resume/CV`, `Receipt`, or `Unknown`. Classification uses document content first; a filename
+is only a weak hint and cannot classify weak content. Low-evidence text receives `Unknown`.
+Fields include invoice number, customer, address, date, regex/spaCy entities, and a best-effort
+`barcodes` list. Barcode records contain `type`, `data`, and a one-based `page` for PDFs.
+Unavailable NLP/barcode dependencies use the regex/empty-list fallback and do not fail an
+otherwise valid document.
 
 ## Ownership and errors
 

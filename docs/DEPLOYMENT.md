@@ -46,9 +46,10 @@ Back up production before destructive migrations. Never replace this process wit
 
 ## Docker
 
-The Dockerfile installs and verifies the Tesseract OCR executable needed for image processing and all
-Python dependencies. It does not install ffmpeg, zbar, or a spaCy model because this MVP
-does not select server-side audio, barcode, or spaCy processing. Run it with PostgreSQL,
+The Dockerfile installs and verifies the Tesseract OCR executable, installs the Linux ZBar
+library for QR/barcode decoding, downloads the small `en_core_web_sm` spaCy model, and installs
+the Python dependencies. It does not install ffmpeg because this MVP does not select
+server-side audio transcription. Run it with PostgreSQL,
 S3-compatible storage, and the required environment variables; do not mount Docker local
 storage as the production document store.
 
@@ -97,10 +98,13 @@ After deploying, use the Render service shell, where available, to check:
 tesseract --version
 tesseract --list-langs
 python -c "import pytesseract; print(pytesseract.get_tesseract_version())"
+python -c "from app.services.barcode import barcode_dependency_status; print(barcode_dependency_status())"
+python -c "import spacy; print(spacy.load('en_core_web_sm').meta['name'])"
 ```
 
-Then upload a readable image or scanned PDF through the application to verify actual
-OCR. The health endpoint checks the database, not OCR extraction. Native Python Render
+Then upload a readable image or scanned PDF through the application to verify actual OCR,
+entity extraction, and any QR/barcode fields. The health endpoint checks the database, not
+OCR/NLP/barcode extraction. Native Python Render
 deployments do not automatically run this Dockerfile; keep the Docker deployment type
 to retain its system-package installation.
 
@@ -122,7 +126,8 @@ After deploying the diagnostics changes:
 3. In browser developer tools, inspect **Network → POST /api/v1/chat**. Copy only the
    `X-Request-ID` response header or `error.details.request_id`. Do not copy authorization
    headers, document contents, or private request payloads into bug reports.
-4. Filter Render runtime logs by that ID. Expected events are `chat_request_started`,
+4. Filter Render runtime logs by that ID. Expected events are `chat_request_started` for
+   the POST request,
    `chat_provider_failed` on failure, and `request_completed` with HTTP status/duration.
 5. Use the safe `reason`, `provider_status`, `error_type`, and `model` fields to diagnose.
 
