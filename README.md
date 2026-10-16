@@ -55,6 +55,7 @@ are normalized to the installed psycopg 3 driver.
 | `DATABASE_URL` | SQLite or PostgreSQL connection URL. |
 | `CORS_ORIGINS` | Comma-separated exact origins, such as the deployed frontend origin. |
 | `MAX_UPLOAD_SIZE_MB` | Request and per-file upload limit; default 25. |
+| `MAX_PDF_PAGES` | Maximum pages processed for text extraction, OCR, and barcode scanning; default 25. |
 | `TOKEN_MAX_AGE_SECONDS` | Bearer token lifetime; default 3600. |
 | `TESSERACT_PATH` | Optional installed OCR executable path, not the Windows installer. Leave blank on Render Docker. |
 | `NLP_MODEL` | Installed spaCy model name; default `en_core_web_sm`. The Render Docker build downloads it once. |

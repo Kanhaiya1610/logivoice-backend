@@ -37,6 +37,8 @@ services:
         value: "20"
       - key: NLP_MODEL
         value: en_core_web_sm
+      - key: MAX_PDF_PAGES
+        value: "25"
 
 databases:
   - name: logivoice-db

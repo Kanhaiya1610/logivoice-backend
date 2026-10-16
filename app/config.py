@@ -67,6 +67,7 @@ def default_config(instance_path: Path) -> dict:
         "SQLALCHEMY_TRACK_MODIFICATIONS": False,
         "MAX_CONTENT_LENGTH": upload_mb * 1024 * 1024,
         "MAX_UPLOAD_SIZE_BYTES": upload_mb * 1024 * 1024,
+        "MAX_PDF_PAGES": max(1, min(_as_int(os.getenv("MAX_PDF_PAGES"), 25), 100)),
         "CORS_ORIGINS": _cors_origins(),
         "TOKEN_MAX_AGE_SECONDS": _as_int(os.getenv("TOKEN_MAX_AGE_SECONDS"), 3600),
         "STORAGE_BACKEND": _env("STORAGE_BACKEND", "local").lower(),

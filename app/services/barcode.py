@@ -9,6 +9,7 @@ normal document-processing flow.
 from __future__ import annotations
 
 import io
+import os
 from typing import Any, Callable
 
 
@@ -135,6 +136,14 @@ def _page_pixmap(page: Any, fitz: Any) -> Any:
     return page.get_pixmap()
 
 
+def _max_pdf_pages() -> int:
+    try:
+        configured = int(os.getenv("MAX_PDF_PAGES", "25"))
+    except ValueError:
+        configured = 25
+    return max(1, min(configured, 100))
+
+
 def decode_pdf(content: bytes) -> list[dict]:
     """Rasterize and decode every PDF page, adding a one-based page number."""
 
@@ -147,6 +156,8 @@ def decode_pdf(content: bytes) -> list[dict]:
         document = fitz.open(stream=content, filetype="pdf")
         records: list[dict[str, Any]] = []
         for page_number, page in enumerate(document, start=1):
+            if page_number > _max_pdf_pages():
+                break
             pixmap = _page_pixmap(page, fitz)
             image_bytes = pixmap.tobytes("png")
             for decoded in decode_image(image_bytes):

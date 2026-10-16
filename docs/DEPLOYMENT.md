@@ -53,6 +53,12 @@ server-side audio transcription. Run it with PostgreSQL,
 S3-compatible storage, and the required environment variables; do not mount Docker local
 storage as the production document store.
 
+PDF processing uses PyMuPDF first for fast embedded-text extraction. The slower `pdfplumber`
+path is only a compatibility fallback when PyMuPDF is unavailable. Text extraction, scanned-PDF
+OCR, and PDF barcode scanning are bounded by `MAX_PDF_PAGES` (default 25). Gunicorn allows up
+to 120 seconds for a deliberately slow OCR request, but normal text PDFs should complete much
+faster. This prevents complex PDF parsing from consuming a worker indefinitely.
+
 ## Tesseract: Windows installer versus deployed OCR engine
 
 The file `tesseract-ocr-w64-setup-5.5.0.20241111.exe` is a Windows setup utility, not

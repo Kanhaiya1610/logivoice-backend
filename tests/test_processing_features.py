@@ -1,6 +1,56 @@
 from __future__ import annotations
 
+import sys
+from types import ModuleType
+
 from app.services import processing
+
+
+def test_pdf_text_uses_fast_pymupdf_path_before_pdfplumber(monkeypatch):
+    class Page:
+        def get_text(self):
+            return "Fast PDF text"
+
+    class Document:
+        def __iter__(self):
+            return iter([Page()])
+
+        def close(self):
+            pass
+
+    fitz = ModuleType("fitz")
+    fitz.open = lambda **kwargs: Document()
+    pdfplumber = ModuleType("pdfplumber")
+    pdfplumber.open = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("pdfplumber should not be used when PyMuPDF is available")
+    )
+    monkeypatch.setitem(sys.modules, "fitz", fitz)
+    monkeypatch.setitem(sys.modules, "pdfplumber", pdfplumber)
+
+    assert processing.extract_text(b"pdf-bytes", ".pdf") == "Fast PDF text"
+
+
+def test_pdf_text_respects_page_limit(monkeypatch):
+    class Page:
+        def __init__(self, number):
+            self.number = number
+
+        def get_text(self):
+            return f"Page {self.number}"
+
+    class Document:
+        def __iter__(self):
+            return iter([Page(1), Page(2), Page(3)])
+
+        def close(self):
+            pass
+
+    fitz = ModuleType("fitz")
+    fitz.open = lambda **kwargs: Document()
+    monkeypatch.setitem(sys.modules, "fitz", fitz)
+    monkeypatch.setenv("MAX_PDF_PAGES", "2")
+
+    assert processing.extract_text(b"pdf-bytes", ".pdf") == "Page 1\nPage 2"
 
 
 def test_process_content_adds_entities_and_image_barcodes(monkeypatch):

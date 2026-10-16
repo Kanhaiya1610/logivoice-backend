@@ -27,3 +27,4 @@ def test_default_config_is_safe_on_a_clean_checkout(tmp_path, monkeypatch):
     assert config["STORAGE_BACKEND"] == "local"
     assert config["TESSERACT_PATH"] == ""
     assert config["NLP_MODEL"] == "en_core_web_sm"
+    assert config["MAX_PDF_PAGES"] == 25

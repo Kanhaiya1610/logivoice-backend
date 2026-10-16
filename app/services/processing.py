@@ -21,6 +21,16 @@ def _configure_tesseract(pytesseract) -> None:
         pytesseract.pytesseract.tesseract_cmd = configured_path
 
 
+def _max_pdf_pages() -> int:
+    """Keep synchronous PDF/OCR work bounded on small Render instances."""
+
+    try:
+        configured = int(os.getenv("MAX_PDF_PAGES", "25"))
+    except ValueError:
+        configured = 25
+    return max(1, min(configured, 100))
+
+
 EXTENSION_MIME = {
     ".pdf": "application/pdf",
     ".png": "image/png",
@@ -88,41 +98,54 @@ def extract_text(content: bytes, suffix: str) -> str:
         return content.decode("utf-8-sig")
 
     if suffix == ".pdf":
-        extracted = []
-        attempted = False
-        try:
-            import pdfplumber
-
-            attempted = True
-            with pdfplumber.open(io.BytesIO(content)) as pdf:
-                extracted = [(page.extract_text() or "") for page in pdf.pages]
-        except ImportError:
-            pass
-        except Exception:
-            extracted = []
-
-        text = "\n".join(part for part in extracted if part).strip()
-        if text:
-            return text
-
+        # PyMuPDF is substantially faster and less memory-intensive for the
+        # normal text-PDF path. Do not send every upload through pdfminer via
+        # pdfplumber: complex PDFs can consume a Gunicorn worker until timeout.
         try:
             import fitz
-
-            attempted = True
-            document = fitz.open(stream=content, filetype="pdf")
-            try:
-                text = "\n".join(page.get_text() for page in document).strip()
-            finally:
-                document.close()
-            if text:
-                return text
         except ImportError:
             fitz = None
-        except Exception as error:
-            raise ProcessingError("PDF text extraction failed") from error
+
+        if fitz is not None:
+            document = None
+            try:
+                document = fitz.open(stream=content, filetype="pdf")
+                parts = []
+                for page_number, page in enumerate(document):
+                    if page_number >= _max_pdf_pages():
+                        break
+                    parts.append(page.get_text() or "")
+                text = "\n".join(part for part in parts if part).strip()
+                if text:
+                    return text
+            except Exception as error:
+                raise ProcessingError("PDF text extraction failed") from error
+            finally:
+                if document is not None:
+                    document.close()
 
         if fitz is None:
-            raise ProcessingError("PDF extraction requires pdfplumber or PyMuPDF")
+            # This is only a compatibility fallback for environments that did
+            # not install the required PyMuPDF package. Render installs it.
+            try:
+                import pdfplumber
+
+                with pdfplumber.open(io.BytesIO(content)) as pdf:
+                    extracted = []
+                    for page_number, page in enumerate(pdf.pages):
+                        if page_number >= _max_pdf_pages():
+                            break
+                        extracted.append(page.extract_text() or "")
+                text = "\n".join(part for part in extracted if part).strip()
+                if text:
+                    return text
+            except ImportError:
+                pass
+            except Exception as error:
+                raise ProcessingError("PDF text extraction failed") from error
+
+        if fitz is None:
+            raise ProcessingError("PDF extraction requires PyMuPDF")
 
         # A scanned PDF has no embedded text. Rasterize its pages and use the
         # same OCR engine as image uploads instead of returning a false success.
@@ -134,7 +157,9 @@ def extract_text(content: bytes, suffix: str) -> str:
             document = fitz.open(stream=content, filetype="pdf")
             try:
                 pages = []
-                for page in document:
+                for page_number, page in enumerate(document):
+                    if page_number >= _max_pdf_pages():
+                        break
                     pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
                     with Image.open(io.BytesIO(pixmap.tobytes("png"))) as image:
                         pages.append(pytesseract.image_to_string(image, lang="eng"))
