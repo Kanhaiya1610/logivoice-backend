@@ -33,6 +33,7 @@ There is no server-side token blacklist. Passwords are never returned or logged.
 | `POST /auth/logout` | Yes | Invalidates the current token version. |
 | `GET /auth/me` | Yes | Returns the authenticated user. |
 | `POST /documents` | Yes | Multipart `files`; also accepts `pdfFile`. Supports PDF, PNG, JPG/JPEG, UTF-8 TXT. |
+| `POST /documents/{id}/reprocess` | Yes | Re-runs extraction and classification against the owned original binary in storage. |
 | `GET /documents` | Yes | Query `q`, `status`, `page`, `per_page` (maximum 100). |
 | `GET /documents/{id}` | Yes | Owned document metadata, fields, and extracted text. |
 | `DELETE /documents/{id}` | Yes | Deletes owned metadata and binary storage object. |

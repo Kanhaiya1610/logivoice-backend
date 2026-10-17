@@ -253,6 +253,49 @@ def upload_documents():
     )
 
 
+@api_v1.post("/documents/<int:document_id>/reprocess")
+@auth_required
+@rate_limit("document-reprocess", 30, 3600)
+def reprocess_document(document_id: int):
+    """Re-run extraction against the original binary already in storage."""
+
+    document = _owned_document(document_id)
+    storage = get_storage()
+    try:
+        with storage.open(document.storage_key) as stream:
+            content = stream.read()
+    except StorageNotFound as error:
+        raise APIError("file_not_found", "The document file is no longer available.", 404) from error
+    except StorageError as error:
+        raise APIError("storage_unavailable", "The document file could not be read.", 503) from error
+
+    suffix = PurePath(document.original_filename).suffix.lower()
+    if suffix not in EXTENSION_MIME:
+        raise APIError("unsupported_document", "The stored document type is no longer supported.", 422)
+
+    try:
+        result = process_content(content, suffix, filename=document.original_filename)
+        document.extracted_text = result["extracted_text"]
+        document.extracted_fields = result["extracted_fields"]
+        document.classification = result["classification"]
+        document.classification_confidence = result["classification_confidence"]
+        document.status = "processed"
+        document.status_message = (
+            None if result["extracted_text"].strip() else "No text was extracted from the document."
+        )
+    except ProcessingError as error:
+        document.status = "failed"
+        document.status_message = str(error)[:500]
+        current_app.logger.warning("Document reprocessing failed for %s: %s", document.original_filename, error)
+
+    document.processed_at = processed_timestamp()
+    db.session.commit()
+    return success_response(
+        {"document": document.to_dict(include_text=True)},
+        message="Document reprocessing completed.",
+    )
+
+
 @api_v1.get("/documents")
 @auth_required
 def list_documents():

@@ -67,6 +67,49 @@ def test_txt_upload_extracts_text_fields_and_classification(client):
     assert "Northwind" in document["extracted_text"]
 
 
+def test_document_can_be_reprocessed_from_stored_binary(client):
+    token = register(client)
+    uploaded = client.post(
+        "/api/v1/documents",
+        data=txt_file(name="reprocess-me.txt", content="Invoice Number: REPROCESS-7\nTotal: 18\n"),
+        headers=headers(token),
+        content_type="multipart/form-data",
+    )
+    assert uploaded.status_code == 201, uploaded.get_json()
+    document_id = uploaded.get_json()["data"]["documents"][0]["id"]
+
+    response = client.post(
+        f"/api/v1/documents/{document_id}/reprocess",
+        headers=headers(token),
+    )
+
+    assert response.status_code == 200, response.get_json()
+    document = response.get_json()["data"]["document"]
+    assert document["status"] == "processed"
+    assert document["classification"] == "Invoice"
+    assert document["fields"]["invoice_number"] == "REPROCESS-7"
+    assert "Total: 18" in document["extracted_text"]
+
+
+def test_document_reprocess_is_scoped_to_owner(client):
+    owner_token = register(client, "reprocess-owner@example.com")
+    other_token = register(client, "reprocess-other@example.com")
+    uploaded = client.post(
+        "/api/v1/documents",
+        data=txt_file(),
+        headers=headers(owner_token),
+        content_type="multipart/form-data",
+    )
+    document_id = uploaded.get_json()["data"]["documents"][0]["id"]
+
+    response = client.post(
+        f"/api/v1/documents/{document_id}/reprocess",
+        headers=headers(other_token),
+    )
+
+    assert response.status_code == 404
+
+
 def test_search_and_pagination_are_scoped_to_owner(client):
     token = register(client)
     files = {
