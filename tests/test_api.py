@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import io
 
+from app.extensions import db
+from app.models import Document
+
 from .conftest import headers, register, txt_file
 
 
@@ -108,6 +111,48 @@ def test_document_reprocess_is_scoped_to_owner(client):
     )
 
     assert response.status_code == 404
+
+
+def test_missing_source_file_keeps_metadata_readable_and_can_be_deleted(client, app):
+    token = register(client)
+    uploaded = client.post(
+        "/api/v1/documents",
+        data=txt_file(name="stale.txt", content="Invoice Number: STALE-1\nTotal: 18\n"),
+        headers=headers(token),
+        content_type="multipart/form-data",
+    )
+    assert uploaded.status_code == 201, uploaded.get_json()
+    document = uploaded.get_json()["data"]["documents"][0]
+    original_fields = document["fields"]
+
+    with app.app_context():
+        stored = db.session.get(Document, document["id"])
+        app.extensions["storage"].delete(stored.storage_key)
+
+    detail = client.get(f"/api/v1/documents/{document['id']}", headers=headers(token))
+    assert detail.status_code == 200
+    assert detail.get_json()["data"]["document"]["fields"] == original_fields
+
+    reprocess = client.post(
+        f"/api/v1/documents/{document['id']}/reprocess",
+        headers=headers(token),
+    )
+    assert reprocess.status_code == 404
+    assert reprocess.get_json()["error"]["code"] == "file_not_found"
+
+    download = client.get(
+        f"/api/v1/documents/{document['id']}/download",
+        headers=headers(token),
+    )
+    assert download.status_code == 404
+    assert download.get_json()["error"]["code"] == "file_not_found"
+
+    deleted = client.delete(
+        f"/api/v1/documents/{document['id']}",
+        headers=headers(token),
+    )
+    assert deleted.status_code == 200
+    assert client.get(f"/api/v1/documents/{document['id']}", headers=headers(token)).status_code == 404
 
 
 def test_multi_invoice_text_upload_creates_searchable_logical_records(client):

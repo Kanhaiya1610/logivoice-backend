@@ -125,6 +125,13 @@ safe `details.reason`, `details.retryable`, and `details.request_id` fields. Eac
 also carries a server-generated `X-Request-ID` header, exposed through CORS for the frontend.
 These fields never include raw provider messages, keys, or document contents.
 
+If a document record remains in the database but its original storage object is missing,
+`GET /documents/{id}` still returns its stored metadata and extracted text, while
+reprocess and download return `404` with `error.code` `file_not_found`. The record can be
+deleted safely and the original file must be uploaded again; the backend does not invent
+or reconstruct the missing binary. Storage outages use `storage_unavailable` (`503`) and
+do not silently delete the record.
+
 The original prototype exposed unversioned `/api/upload`, `/api/chat`, and history routes.
 They are intentionally not aliases in this independent MVP; clients should migrate to the
 versioned contracts above.

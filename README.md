@@ -99,6 +99,12 @@ two line items. Reprocess an existing document to add the new fields after deplo
 See [supported formats and limits](docs/API.md#logistics-metadata); complex OCR/table
 layouts may retain only extracted text rather than structured items.
 
+If an older document's database row exists but its source object was lost from storage,
+the detail page remains readable but reprocess/download cannot work. Delete that stale
+record and re-upload the original file. Check the configured S3-compatible bucket and
+backups before deleting production data; a healthy database endpoint does not verify
+object storage availability.
+
 ## Deployment
 
 `render.yaml` describes a Docker-based Flask Render web service and managed PostgreSQL database. Set
