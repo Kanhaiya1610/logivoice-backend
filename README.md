@@ -21,6 +21,8 @@ binary files through a local-development or S3-compatible storage adapter.
 - Deterministic logistics metadata: labeled subtotal/tax/total, currency, due date,
   purchase-order/tracking references, carrier, and supported line-item tables/lists.
   Exact decimal strings are kept in existing JSON fields; missing values are not inferred.
+  Visually aligned PDF invoice columns are supported through bounded PyMuPDF word-coordinate
+  normalization; arbitrary OCR/table layouts remain text-only.
 - Owned document listing, filtering, pagination, detail, deletion, authenticated download,
   text search, optional document-grounded Gemini chat, and data-backed overview analytics.
 - Flask-Migrate/Alembic migrations. Production startup applies migrations; it does not

@@ -188,6 +188,133 @@ def extract_text(content: bytes, suffix: str) -> str:
     raise ProcessingError("No processor is available for this file type")
 
 
+def _pdf_word_rows(words) -> list[list[tuple]]:
+    """Group PyMuPDF word tuples into visual rows without changing text output."""
+
+    rows: list[list[tuple]] = []
+    for word in sorted(words or (), key=lambda value: (float(value[1]), float(value[0]))):
+        if len(word) < 5 or not str(word[4]).strip():
+            continue
+        y = float(word[1])
+        if rows and abs(y - float(rows[-1][0][1])) <= 2.0:
+            rows[-1].append(word)
+        else:
+            rows.append([word])
+    return rows
+
+
+def _pdf_layout_metadata(page) -> str:
+    """Canonicalize a visually aligned invoice table for the logistics parser."""
+
+    try:
+        words = page.get_text("words")
+    except (AttributeError, TypeError, ValueError):
+        return ""
+    rows = _pdf_word_rows(words)
+    header_index = None
+    columns = None
+    for index, row in enumerate(rows):
+        values = [str(word[4]).strip().casefold() for word in row]
+        if "description" not in values or "quantity" not in values or "amount" not in values:
+            continue
+        price_words = [word for word in row if str(word[4]).strip().casefold() in {"unit", "price"}]
+        if not price_words:
+            continue
+        header_index = index
+        columns = (
+            min(float(word[0]) for word in row if str(word[4]).strip().casefold() == "description"),
+            min(float(word[0]) for word in row if str(word[4]).strip().casefold() == "quantity"),
+            min(float(word[0]) for word in price_words),
+            min(float(word[0]) for word in row if str(word[4]).strip().casefold() == "amount"),
+        )
+        break
+    if header_index is None or columns is None:
+        return ""
+
+    _, quantity_x, price_x, amount_x = columns
+    lines = ["Line Items:", "Description | Quantity | Unit Price | Amount"]
+    money_or_number = re.compile(r"^[+-]?(?:[$€£¥]|[A-Z]{3})?[0-9][0-9,.-]*[$€£¥]?$", re.I)
+    for row in rows[header_index + 1:]:
+        ordered = sorted(row, key=lambda value: float(value[0]))
+        row_text = " ".join(str(word[4]).strip() for word in ordered)
+        summary_words = [word for word in ordered if float(word[0]) >= quantity_x - 20]
+        summary_text = " ".join(str(word[4]).strip() for word in summary_words)
+        if re.search(r"(?i)\b(?:subtotal|tax|total)\b", summary_text):
+            amount_words = [word for word in ordered if float(word[0]) >= amount_x - 20]
+            if amount_words:
+                label_words = [
+                    word for word in summary_words if float(word[0]) < amount_x - 20
+                ]
+                lines.append(
+                    f"{' '.join(str(word[4]).strip() for word in label_words)} "
+                    f"{' '.join(str(word[4]).strip() for word in amount_words)}"
+                )
+            continue
+
+        description_words = [word for word in ordered if float(word[0]) < quantity_x - 20]
+        quantity_words = [
+            word for word in ordered if quantity_x - 20 <= float(word[0]) < price_x - 20
+        ]
+        price_words = [
+            word for word in ordered if price_x - 20 <= float(word[0]) < amount_x - 20
+        ]
+        amount_words = [word for word in ordered if float(word[0]) >= amount_x - 20]
+        cells = [
+            " ".join(str(word[4]).strip() for word in description_words),
+            " ".join(str(word[4]).strip() for word in quantity_words),
+            " ".join(str(word[4]).strip() for word in price_words),
+            " ".join(str(word[4]).strip() for word in amount_words),
+        ]
+        if (
+            all(cells)
+            and money_or_number.fullmatch(cells[1])
+            and money_or_number.fullmatch(cells[2])
+            and money_or_number.fullmatch(cells[3])
+        ):
+            lines.append(" | ".join(cells))
+    return "\n".join(lines) if len(lines) > 2 else ""
+
+
+def extract_pdf_layout_metadata(content: bytes) -> str:
+    """Return canonical metadata text for visually aligned PDF invoice tables."""
+
+    try:
+        import fitz
+    except ImportError:
+        return ""
+    document = None
+    try:
+        document = fitz.open(stream=content, filetype="pdf")
+        parts = []
+        for page_number, page in enumerate(document):
+            if page_number >= _max_pdf_pages():
+                break
+            normalized = _pdf_layout_metadata(page)
+            if normalized:
+                parts.append(normalized)
+        return "\n".join(parts)
+    except Exception:
+        return ""
+    finally:
+        if document is not None:
+            document.close()
+
+
+_PDF_EMPTY_AMOUNT_LABEL = re.compile(
+    r"^\s*(?:sub[ -]?total|total(?:\s+(?:tax|amount))?|grand\s+total|"
+    r"invoice\s+total|amount\s+due|tax|vat|sales\s+tax)"
+    r"(?:\s*\([^)]*\))?\s*[:=.-]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _pdf_logistics_input(text: str, layout_metadata: str) -> str:
+    """Keep raw labeled metadata while removing empty stacked amount labels."""
+
+    raw_lines = [line for line in text.splitlines() if not _PDF_EMPTY_AMOUNT_LABEL.fullmatch(line)]
+    return "\n".join(["\n".join(raw_lines), layout_metadata])
+
+
 CLASSIFICATION_KEYWORDS = {
     "Invoice": {
         "invoice": 3,
@@ -262,7 +389,11 @@ def _usable_field_value(value: str | None) -> str | None:
     return cleaned
 
 
-def extract_fields(text: str, entities: dict | None = None) -> dict:
+def extract_fields(
+    text: str,
+    entities: dict | None = None,
+    logistics_text: str | None = None,
+) -> dict:
     invoice_number = _first_match(
         [
             r"(?:invoice\s*(?:number|no\.?|#)?|bill\s*(?:number|no\.?|#))\s*[:.-]?\s*([A-Z0-9][A-Z0-9/_-]{2,})",
@@ -286,6 +417,13 @@ def extract_fields(text: str, entities: dict | None = None) -> dict:
         ],
         text,
     )
+    bill_to = re.search(
+        r"(?ims)^\s*BILL\s+TO\s*\n\s*([^\n]+)\n\s*([^\n]+)",
+        text,
+    )
+    if bill_to:
+        customer_name = customer_name or _usable_field_value(bill_to.group(1))
+        address = address or _usable_field_value(bill_to.group(2))
     entities = entities or extract_entities(text)
     address = _usable_field_value(address)
     customer_name = _usable_field_value(customer_name)
@@ -297,7 +435,7 @@ def extract_fields(text: str, entities: dict | None = None) -> dict:
         "date": date_value,
         "organizations": entities.get("organizations", []),
         "locations": entities.get("locations", []),
-        **extract_logistics_fields(text),
+        **extract_logistics_fields(logistics_text or text),
     }
 
 
@@ -340,10 +478,16 @@ def split_logical_records(text: str) -> list[str]:
     return segments
 
 
-def _process_extracted_text(content: bytes, suffix: str, text: str, filename: str = "") -> dict:
+def _process_extracted_text(
+    content: bytes,
+    suffix: str,
+    text: str,
+    filename: str = "",
+    logistics_text: str | None = None,
+) -> dict:
     classification, confidence = classify_document(text, filename=filename)
     entities = extract_entities(text)
-    fields = extract_fields(text, entities=entities)
+    fields = extract_fields(text, entities=entities, logistics_text=logistics_text)
     fields["entities"] = entities
     if suffix == ".pdf":
         fields["barcodes"] = decode_pdf(content)
@@ -358,7 +502,10 @@ def _process_extracted_text(content: bytes, suffix: str, text: str, filename: st
 
 
 def process_content(content: bytes, suffix: str, filename: str = "") -> dict:
-    return _process_extracted_text(content, suffix, extract_text(content, suffix), filename)
+    text = extract_text(content, suffix)
+    layout_metadata = extract_pdf_layout_metadata(content) if suffix == ".pdf" else None
+    logistics_input = _pdf_logistics_input(text, layout_metadata) if layout_metadata else text
+    return _process_extracted_text(content, suffix, text, filename, logistics_text=logistics_input)
 
 
 def process_content_segments(content: bytes, suffix: str, filename: str = "") -> list[dict]:
@@ -371,7 +518,18 @@ def process_content_segments(content: bytes, suffix: str, filename: str = "") ->
 
     text = extract_text(content, suffix)
     segments = split_logical_records(text) if suffix == ".txt" else [text]
-    return [_process_extracted_text(content, suffix, segment, filename) for segment in segments]
+    layout_metadata = extract_pdf_layout_metadata(content) if suffix == ".pdf" else None
+    logistics_input = _pdf_logistics_input(text, layout_metadata) if layout_metadata else None
+    return [
+        _process_extracted_text(
+            content,
+            suffix,
+            segment,
+            filename,
+            logistics_text=logistics_input or segment,
+        )
+        for segment in segments
+    ]
 
 
 def processed_timestamp():

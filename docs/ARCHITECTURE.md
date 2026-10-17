@@ -63,7 +63,9 @@ then becomes `processed` or `failed` with a safe status message. UTF-8 TXT uploa
 repeated, uniquely numbered invoice headers can produce multiple logical records; each record
 keeps an independently addressable copy of the original source binary for download. Direct
 text extraction is used for PDFs first; pages without embedded text are rasterized and sent
-through Tesseract OCR.
+through Tesseract OCR. For text PDFs, PyMuPDF word coordinates can also canonicalize
+visually aligned invoice columns before logistics metadata extraction, while the
+displayed extracted text remains the original text extraction.
 Image OCR also requires the Tesseract executable. QR/barcode detection is best-effort and does
 not fail a document when ZBar is unavailable. Search is indexed ownership filtering plus
 SQL `LIKE` queries over filename, extracted text, classification, and serialized extracted

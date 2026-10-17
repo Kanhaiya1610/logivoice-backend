@@ -153,7 +153,8 @@ _PHONE_RE = re.compile(
     r"(?<![\w])\+?\d{10,15}(?![\w])"
 )
 _PERSON_LABEL_RE = re.compile(
-    r"(?i)(?P<label>first\s+name|last\s+name|owner(?:\s+name)?|by)\s*[:=-]?\s*"
+    r"(?i)(?P<label>first\s+name|last\s+name|owner(?:\s+name)?|"
+    r"(?:received|prepared|approved|signed|submitted|delivered)\s+by)\s*[:=-]?\s*"
     r"(?P<value>[^\r\n,]+)"
 )
 
@@ -202,6 +203,8 @@ _GENERIC_ENTITY_VALUES = {
     "pdf", "title", "hello world", "hello world example", "qr codes", "qr code", "example", "example 1",
     "example 2", "example 3", "square", "state", "zip", "owner", "address",
     "mobil phone", "mobile phone", "phone", "work phone", "parks", "last e-mail",
+    "description", "quantity", "unit price", "amount", "quick payment", "quick payment scan",
+    "scan to pay online or view", "invoice details", "thank you for your business",
 }
 _NOISY_PERSON_WORDS = {
     "first", "last", "name", "email", "e-mail", "phone", "mobile", "mobil", "work",
@@ -242,6 +245,11 @@ def _regex_entities(text: str) -> dict[str, Any]:
     for match in _URL_RE.finditer(text):
         _append_unique(result, "urls", match.group(0).rstrip(".,;:!?)]}"))
     for match in _PHONE_RE.finditer(text):
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        line_end = text.find("\n", match.end())
+        line = text[line_start:] if line_end < 0 else text[line_start:line_end]
+        if re.search(r"\btax\s+id\b", line, flags=re.IGNORECASE):
+            continue
         _append_unique(result, "phones", match.group(0).strip())
 
     first_name = re.search(r"(?i)first\s+name\s*[:=-]\s*([A-Z][A-Za-z.'-]{1,40})", text)
@@ -284,6 +292,8 @@ def _spacy_entities(text: str, nlp: Any) -> dict[str, Any] | None:
                     continue
                 if raw_value.casefold() in _GENERIC_ENTITY_VALUES:
                     continue
+                if _looks_like_invoice_layout_noise(raw_value, text, bucket):
+                    continue
                 if bucket == "people":
                     words = {word.casefold().strip(".,:;()") for word in raw_value.split()}
                     if (
@@ -311,6 +321,38 @@ def _spacy_entities(text: str, nlp: Any) -> dict[str, Any] | None:
         return result
     except Exception:
         return None
+
+
+def _looks_like_invoice_layout_noise(value: str, text: str, bucket: str) -> bool:
+    """Reject table/payment labels and product rows misclassified by NER."""
+
+    normalized = re.sub(r"\s+", " ", value).strip().casefold()
+    if any(
+        phrase in normalized
+        for phrase in (
+            "quick payment",
+            "scan to pay",
+            "invoice details",
+            "thank you for your business",
+        )
+    ):
+        return True
+    if bucket != "organizations":
+        return False
+    for raw_line in text.splitlines():
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if line.casefold() != normalized:
+            continue
+        if re.search(r"(?:^|\s)\d+(?:[.,]\d+)?\s+(?:pcs?|pieces?|boxes?|units?)$", line, re.I):
+            return True
+        if re.search(r"\$\s*\d|\b(?:USD|EUR|GBP)\s*\d", line, re.I):
+            return True
+        index = text.splitlines().index(raw_line)
+        following = text.splitlines()[index + 1:index + 4]
+        if following and re.fullmatch(r"\s*\d+(?:[.,]\d+)?\s*", following[0]):
+            if any(re.search(r"[$€£¥]|\b(?:USD|EUR|GBP)\b", item, re.I) for item in following[1:]):
+                return True
+    return False
 
 
 def extract_entities(text: str, nlp: Any = None) -> dict[str, Any]:

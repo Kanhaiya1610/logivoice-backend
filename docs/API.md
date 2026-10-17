@@ -98,7 +98,10 @@ Each logical TXT record is processed separately. Supported products are explicit
 pipe/tab/multiple-space tables with recognized Description/Product, SKU, Qty/Quantity,
 Unit, Unit Price, and Amount headers. Blank lines, new labels, or lost column alignment
 end a section. Missing cells are `null`; invalid numeric cells reject that row. At most
-200 items are returned. Arbitrary PDF/OCR table layouts are not reconstructed.
+200 items are returned. For PDFs with a visually aligned `DESCRIPTION`, `QUANTITY`,
+`UNIT PRICE`, and `AMOUNT` table, PyMuPDF word coordinates are used to canonicalize
+the rows before extraction. Arbitrary PDF/OCR layouts without those aligned columns
+are not reconstructed.
 
 Amounts preserve printed decimal precision: `1,234.50` and `1.234,50` normalize to
 `1234.50`. A lone separator followed by exactly three digits (for example `1,234` or

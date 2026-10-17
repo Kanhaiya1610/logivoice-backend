@@ -153,3 +153,40 @@ def test_noisy_spacy_layout_entities_are_filtered_and_dates_are_normalized():
     assert entities["organizations"] == ["WindJack Solutions, Inc"]
     assert entities["locations"] == []
     assert entities["people"] == ["Jeff Smith"]
+
+
+def test_invoice_table_and_payment_copy_are_not_entities():
+    class FakeNLP:
+        def __call__(self, _text):
+            return SimpleNamespace(ents=[
+                SimpleNamespace(text="QUANTITY", label_="ORG"),
+                SimpleNamespace(text="Custom Web Application Development", label_="ORG"),
+                SimpleNamespace(text="Quick Payment Scan", label_="ORG"),
+                SimpleNamespace(text="Acme Digital Solutions", label_="ORG"),
+                SimpleNamespace(text="the due date. Thank you!", label_="PERSON"),
+                SimpleNamespace(text="Jane Doe", label_="PERSON"),
+            ])
+
+    text = (
+        "DESCRIPTION\nQUANTITY\nUNIT PRICE\nAMOUNT\n"
+        "Custom Web Application Development\n12\n$175.00\n$2100.00\n"
+        "Quick Payment\nScan to pay online or view\ninvoice details.\n"
+        "Please make the payment by the due date. Thank you!\n"
+        "Acme Digital Solutions\nJane Doe"
+    )
+    entities = nlp_service.extract_entities(text, nlp=FakeNLP())
+
+    assert entities["organizations"] == ["Acme Digital Solutions"]
+    assert entities["people"] == ["Jane Doe"]
+
+
+def test_regex_phone_extraction_ignores_tax_id_lines():
+    entities = nlp_service.extract_entities(
+        "Phone: +999 1234 5678\nTax ID: XX-000-111-222\n"
+        "Other Phone: +999 8765 4321"
+    )
+
+    assert entities["phones"] == ["+999 1234 5678", "+999 8765 4321"]
+    assert nlp_service.extract_entities(
+        "Please make the payment by the due date. Thank you!"
+    )["people"] == []

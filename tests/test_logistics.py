@@ -80,13 +80,19 @@ def test_subtotal_tax_rates_and_identifiers_do_not_invent_a_total():
     fields = extract_logistics_fields(
         "Subtotal: 125.50\nTax: 10%\nVAT Rate: 20\n"
         "PO: 0007\nTracking Number: 0012345\nSKU: 000012\n"
-        "Notes: invoice total is 138.05\nThe total is 138.05"
+        "Tax ID: XX-000-111-222\nNotes: invoice total is 138.05\nThe total is 138.05"
     )
     assert fields["subtotal"] == "125.50"
     assert fields["tax"] is None
     assert fields["total"] is None
     assert fields["purchase_order_number"] == "0007"
     assert fields["tracking_number"] == "0012345"
+
+
+def test_tax_id_is_not_treated_as_a_tax_amount():
+    assert extract_logistics_fields(
+        "Tax ID: XX-000-111-222\nTax (8.5%): 327.04"
+    )["tax"] == "327.04"
 
 
 @pytest.mark.parametrize("label", ["Subtotal", "Sub Total", "Sub-Total"])

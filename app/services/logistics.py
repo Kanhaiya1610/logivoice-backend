@@ -37,7 +37,7 @@ _SYMBOL_CODES = {
 }
 
 _AMOUNT_LABEL = re.compile(
-    r"^(?P<label>sub[ -]?total|total[ \t]+tax|sales[ \t]+tax|tax|vat|"
+    r"^(?P<label>sub[ -]?total|total[ \t]+tax|sales[ \t]+tax|tax(?![ \t]+id\b)|vat|"
     r"grand[ \t]+total|invoice[ \t]+total|total[ \t]+amount|amount[ \t]+due|total)"
     r"(?=[ \t:=]|$)(?P<value>.*)$", re.I,
 )
