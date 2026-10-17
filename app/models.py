@@ -78,20 +78,26 @@ class Document(db.Model):
     owner = db.relationship("User", back_populates="documents")
 
     def to_dict(self, include_text: bool = False) -> dict:
+        fields = self.extracted_fields or {}
         result = {
             "id": self.id,
             "filename": self.original_filename,
+            "source_filename": fields.get("source_filename", self.original_filename),
             "mime_type": self.mime_type,
             "file_size": self.file_size,
             "status": self.status,
             "status_message": self.status_message,
             "classification": self.classification,
             "classification_confidence": round(self.classification_confidence or 0.0, 4),
-            "fields": self.extracted_fields or {},
+            "fields": fields,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "processed_at": self.processed_at.isoformat() if self.processed_at else None,
         }
+        if fields.get("record_index") is not None:
+            result["record_index"] = fields["record_index"]
+        if fields.get("record_count") is not None:
+            result["record_count"] = fields["record_count"]
         if include_text:
             result["extracted_text"] = self.extracted_text or ""
         return result

@@ -32,7 +32,7 @@ There is no server-side token blacklist. Passwords are never returned or logged.
 | `POST /auth/login` | No | JSON `{email,password}`; returns user and token. |
 | `POST /auth/logout` | Yes | Invalidates the current token version. |
 | `GET /auth/me` | Yes | Returns the authenticated user. |
-| `POST /documents` | Yes | Multipart `files`; also accepts `pdfFile`. Supports PDF, PNG, JPG/JPEG, UTF-8 TXT. |
+| `POST /documents` | Yes | Multipart `files`; also accepts `pdfFile`. Supports PDF, PNG, JPG/JPEG, UTF-8 TXT. Repeated uniquely numbered invoice records in TXT uploads are returned as separate logical documents. |
 | `POST /documents/{id}/reprocess` | Yes | Re-runs extraction and classification against the owned original binary in storage. |
 | `GET /documents` | Yes | Query `q`, `status`, `page`, `per_page` (maximum 100). |
 | `GET /documents/{id}` | Yes | Owned document metadata, fields, and extracted text. |
@@ -48,7 +48,10 @@ The default request/per-file limit is 25 MB and is configured by `MAX_UPLOAD_SIZ
 The API checks sanitized extension, compatible declared MIME type, magic bytes, image
 decodability, and UTF-8 for text. A bad file returns 400; an oversized request/file
 returns 413. Each accepted file gets a generated storage key. Processing is synchronous,
-so the response includes `processed` or `failed` status and any safe processing message.
+so the response includes `processed` or `failed` status and any safe processing message. A
+UTF-8 TXT upload with repeated, distinct `Invoice No.` or `Invoice Number` headers is
+conservatively split into logical records; each record retains the original source binary
+for download.
 
 Classification labels include `Invoice`, `Delivery Note`, `Packing Slip`, `Purchase Order`,
 `Resume/CV`, `Receipt`, or `Unknown`. Classification uses document content first; a filename

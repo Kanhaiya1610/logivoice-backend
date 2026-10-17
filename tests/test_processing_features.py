@@ -103,3 +103,32 @@ def test_process_content_adds_page_aware_pdf_barcodes(monkeypatch):
     assert result["extracted_fields"]["barcodes"] == [
         {"type": "CODE128", "data": "SHIP-42", "page": 2}
     ]
+
+
+def test_split_logical_records_requires_distinct_invoice_numbers():
+    text = (
+        "Invoice No.: 1234\nCustomer Name: John Doe\nDelivery Address: Main St\n\n"
+        "Invoice No.: 5678\nCustomer Name: Jane Smith\nDelivery Address: Elm St"
+    )
+
+    records = processing.split_logical_records(text)
+
+    assert len(records) == 2
+    assert "Invoice No.: 1234" in records[0]
+    assert "Customer Name: Jane Smith" in records[1]
+
+
+def test_split_logical_records_keeps_repeated_page_headers_together():
+    text = "Invoice No.: 1234\nPage 1\n\nInvoice No.: 1234\nPage 2"
+
+    assert processing.split_logical_records(text) == [text]
+
+
+def test_extract_fields_supports_customer_name_label():
+    fields = processing.extract_fields(
+        "Invoice No.: 1234\nCustomer Name: John Doe\nDelivery Address: Main St"
+    )
+
+    assert fields["invoice_number"] == "1234"
+    assert fields["customer_name"] == "John Doe"
+    assert fields["address"] == "Main St"

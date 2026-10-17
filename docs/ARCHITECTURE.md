@@ -54,9 +54,12 @@ local development and tests.
 
 ## Processing behavior and limits
 
-Processing is synchronous for the MVP. A document is persisted with `processing`, then
-becomes `processed` or `failed` with a safe status message. Direct text extraction is used
-for PDFs first; pages without embedded text are rasterized and sent through Tesseract OCR.
+Processing is synchronous for the MVP. Each logical document is persisted with `processing`,
+then becomes `processed` or `failed` with a safe status message. UTF-8 TXT uploads with
+repeated, uniquely numbered invoice headers can produce multiple logical records; each record
+keeps an independently addressable copy of the original source binary for download. Direct
+text extraction is used for PDFs first; pages without embedded text are rasterized and sent
+through Tesseract OCR.
 Image OCR also requires the Tesseract executable. QR/barcode detection is best-effort and does
 not fail a document when ZBar is unavailable. Search is indexed ownership filtering plus
 SQL `LIKE` queries over filename, extracted text, classification, and serialized extracted

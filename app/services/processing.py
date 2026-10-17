@@ -270,7 +270,7 @@ def extract_fields(text: str, entities: dict | None = None) -> dict:
         text,
     )
     customer_name = _first_match(
-        [r"(?:customer|client|bill\s+to|sold\s+to)\s*[:.-]\s*([^\n]+)"],
+        [r"(?:customer(?:\s+name)?|client(?:\s+name)?|bill\s+to|sold\s+to)\s*[:.-]\s*([^\n]+)"],
         text,
     )
     address = _first_match(
@@ -299,8 +299,46 @@ def extract_fields(text: str, entities: dict | None = None) -> dict:
     }
 
 
-def process_content(content: bytes, suffix: str, filename: str = "") -> dict:
-    text = extract_text(content, suffix)
+_LOGICAL_RECORD_START = re.compile(
+    r"(?im)^[ \t]*(?:(?:invoice|bill)\s+(?:number|no\.?|#))(?=\s*[:.-]|\s|$)"
+)
+_INVOICE_RECORD_NUMBER = re.compile(
+    r"(?im)^\s*(?:invoice|bill)\s+(?:number|no\.?|#)\s*[:.-]*\s*"
+    r"([A-Z0-9][A-Z0-9/_-]*)\b"
+)
+
+
+def split_logical_records(text: str) -> list[str]:
+    """Split repeated invoice records when each record has a distinct number.
+
+    The splitter is deliberately conservative: a text document is only split
+    when every detected record has a unique invoice/bill number. This avoids
+    treating repeated page headers or weakly structured text as separate
+    documents.
+    """
+
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not normalized:
+        return [""]
+
+    starts = [match.start() for match in _LOGICAL_RECORD_START.finditer(normalized)]
+    if len(starts) < 2:
+        return [normalized]
+
+    segments = [
+        normalized[start:end].strip()
+        for start, end in zip(starts, starts[1:] + [len(normalized)])
+    ]
+    numbers = [
+        match.group(1).casefold() if (match := _INVOICE_RECORD_NUMBER.search(segment)) else None
+        for segment in segments
+    ]
+    if any(number is None for number in numbers) or len(set(numbers)) != len(numbers):
+        return [normalized]
+    return segments
+
+
+def _process_extracted_text(content: bytes, suffix: str, text: str, filename: str = "") -> dict:
     classification, confidence = classify_document(text, filename=filename)
     entities = extract_entities(text)
     fields = extract_fields(text, entities=entities)
@@ -315,6 +353,23 @@ def process_content(content: bytes, suffix: str, filename: str = "") -> dict:
         "classification": classification,
         "classification_confidence": confidence,
     }
+
+
+def process_content(content: bytes, suffix: str, filename: str = "") -> dict:
+    return _process_extracted_text(content, suffix, extract_text(content, suffix), filename)
+
+
+def process_content_segments(content: bytes, suffix: str, filename: str = "") -> list[dict]:
+    """Process one upload into one or more deterministic logical records.
+
+    Logical splitting currently targets UTF-8 text uploads with repeated,
+    uniquely numbered invoice headers. Other formats retain the existing
+    single-document behavior until their page-to-record mapping is explicit.
+    """
+
+    text = extract_text(content, suffix)
+    segments = split_logical_records(text) if suffix == ".txt" else [text]
+    return [_process_extracted_text(content, suffix, segment, filename) for segment in segments]
 
 
 def processed_timestamp():

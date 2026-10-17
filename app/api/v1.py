@@ -24,6 +24,7 @@ from ..services.processing import (
     EXTENSION_MIME,
     ProcessingError,
     process_content,
+    process_content_segments,
     processed_timestamp,
     validate_and_read,
 )
@@ -69,6 +70,48 @@ def _owned_document(document_id: int) -> Document:
         # Do not disclose whether another user's ID exists.
         raise APIError("not_found", "Document not found.", 404)
     return document
+
+
+def _source_filename(document: Document) -> str:
+    fields = document.extracted_fields or {}
+    source_filename = fields.get("source_filename")
+    return secure_filename(str(source_filename)) if source_filename else document.original_filename
+
+
+def _logical_filename(source_filename: str, record_index: int, record_count: int) -> str:
+    if record_count == 1:
+        return source_filename
+    source_path = PurePath(source_filename)
+    suffix = source_path.suffix.lower()
+    stem = secure_filename(source_path.stem) or "document"
+    suffix_budget = max(1, 255 - len(suffix))
+    record_suffix = f"__record-{record_index}"
+    return f"{stem[:max(1, suffix_budget - len(record_suffix))]}{record_suffix}{suffix}"
+
+
+def _logical_fields(fields: dict, source_filename: str, record_index: int, record_count: int) -> dict:
+    if record_count == 1:
+        return fields
+    result = dict(fields)
+    result.update(
+        {
+            "source_filename": source_filename,
+            "record_index": record_index,
+            "record_count": record_count,
+        }
+    )
+    return result
+
+
+def _apply_processing_result(document: Document, result: dict) -> None:
+    document.extracted_text = result["extracted_text"]
+    document.extracted_fields = result["extracted_fields"]
+    document.classification = result["classification"]
+    document.classification_confidence = result["classification_confidence"]
+    document.status = "processed"
+    document.status_message = (
+        None if result["extracted_text"].strip() else "No text was extracted from the document."
+    )
 
 
 def _document_query(q: str | None = None, status: str | None = None):
@@ -199,34 +242,39 @@ def upload_documents():
     try:
         for safe_name, mime_type, content in prepared:
             suffix = PurePath(safe_name).suffix.lower()
-            key = f"documents/{g.current_user.id}/{uuid4().hex}{suffix}"
-            storage.save(BytesIO(content), key, mime_type)
-            saved_keys.append(key)
-            document = Document(
-                owner_id=g.current_user.id,
-                original_filename=secure_filename(safe_name),
-                storage_key=key,
-                mime_type=mime_type,
-                file_size=len(content),
-                status="processing",
-            )
             try:
-                result = process_content(content, suffix, filename=safe_name)
-                document.extracted_text = result["extracted_text"]
-                document.extracted_fields = result["extracted_fields"]
-                document.classification = result["classification"]
-                document.classification_confidence = result["classification_confidence"]
-                document.status = "processed"
-                document.status_message = (
-                    None if result["extracted_text"].strip() else "No text was extracted from the document."
-                )
+                results = process_content_segments(content, suffix, filename=safe_name)
+                processing_error = None
             except ProcessingError as error:
-                document.status = "failed"
-                document.status_message = str(error)[:500]
+                results = [None]
+                processing_error = error
                 current_app.logger.warning("Document processing failed for %s: %s", safe_name, error)
-            document.processed_at = processed_timestamp()
-            db.session.add(document)
-            documents.append(document)
+
+            record_count = len(results)
+            source_filename = secure_filename(safe_name)
+            for record_index, result in enumerate(results, start=1):
+                key = f"documents/{g.current_user.id}/{uuid4().hex}{suffix}"
+                storage.save(BytesIO(content), key, mime_type)
+                saved_keys.append(key)
+                document = Document(
+                    owner_id=g.current_user.id,
+                    original_filename=_logical_filename(source_filename, record_index, record_count),
+                    storage_key=key,
+                    mime_type=mime_type,
+                    file_size=len(content),
+                    status="processing",
+                )
+                if processing_error is not None:
+                    document.status = "failed"
+                    document.status_message = str(processing_error)[:500]
+                else:
+                    result["extracted_fields"] = _logical_fields(
+                        result["extracted_fields"], source_filename, record_index, record_count
+                    )
+                    _apply_processing_result(document, result)
+                document.processed_at = processed_timestamp()
+                db.session.add(document)
+                documents.append(document)
         db.session.commit()
     except StorageError as error:
         db.session.rollback()
@@ -269,20 +317,26 @@ def reprocess_document(document_id: int):
     except StorageError as error:
         raise APIError("storage_unavailable", "The document file could not be read.", 503) from error
 
-    suffix = PurePath(document.original_filename).suffix.lower()
+    source_filename = _source_filename(document)
+    suffix = PurePath(source_filename).suffix.lower()
     if suffix not in EXTENSION_MIME:
         raise APIError("unsupported_document", "The stored document type is no longer supported.", 422)
 
     try:
-        result = process_content(content, suffix, filename=document.original_filename)
-        document.extracted_text = result["extracted_text"]
-        document.extracted_fields = result["extracted_fields"]
-        document.classification = result["classification"]
-        document.classification_confidence = result["classification_confidence"]
-        document.status = "processed"
-        document.status_message = (
-            None if result["extracted_text"].strip() else "No text was extracted from the document."
-        )
+        fields = document.extracted_fields or {}
+        record_index = fields.get("record_index")
+        if isinstance(record_index, int) and record_index > 0:
+            results = process_content_segments(content, suffix, filename=source_filename)
+            if record_index <= len(results):
+                result = results[record_index - 1]
+                result["extracted_fields"] = _logical_fields(
+                    result["extracted_fields"], source_filename, record_index, len(results)
+                )
+            else:
+                result = process_content(content, suffix, filename=source_filename)
+        else:
+            result = process_content(content, suffix, filename=source_filename)
+        _apply_processing_result(document, result)
     except ProcessingError as error:
         document.status = "failed"
         document.status_message = str(error)[:500]
@@ -354,7 +408,7 @@ def download_document(document_id: int):
         stream,
         mimetype=document.mime_type,
         as_attachment=True,
-        download_name=document.original_filename,
+        download_name=_source_filename(document),
         max_age=0,
     )
 

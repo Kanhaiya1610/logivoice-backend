@@ -6,6 +6,16 @@ import pytest
 
 from app import create_app
 from app.extensions import db
+from app.rate_limit import limiter
+
+
+@pytest.fixture(autouse=True)
+def reset_process_rate_limits():
+    # Tests use one client address; clear the process-local buckets between
+    # cases so the suite does not depend on test ordering.
+    with limiter._lock:
+        limiter._events.clear()
+    yield
 
 
 @pytest.fixture()

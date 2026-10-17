@@ -126,6 +126,17 @@ paths:
             application/octet-stream: { schema: { type: string, format: binary } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /documents/{document_id}/reprocess:
+    parameters:
+      - { $ref: '#/components/parameters/DocumentId' }
+    post:
+      tags: [Documents]
+      description: Re-run extraction and classification against the owned source binary. Logical TXT records retain their record segment.
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /search:
     post:
       tags: [Search]

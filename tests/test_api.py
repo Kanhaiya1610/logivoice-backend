@@ -110,6 +110,64 @@ def test_document_reprocess_is_scoped_to_owner(client):
     assert response.status_code == 404
 
 
+def test_multi_invoice_text_upload_creates_searchable_logical_records(client):
+    token = register(client)
+    content = (
+        "Invoice No.: 1234\n"
+        "Customer Name: John Doe\n"
+        "Delivery Address: 123 Main St, Springfield\n\n"
+        "Invoice No.: 5678\n"
+        "Customer Name: Jane Smith\n"
+        "Delivery Address: 456 Elm St, Shelbyville\n\n"
+        "Invoice No.: 4321\n"
+        "Customer Name: John Doe\n"
+        "Delivery Address: 789 Oak St, Capital City\n"
+    )
+    uploaded = client.post(
+        "/api/v1/documents",
+        data=txt_file(name="sample_invoice.txt", content=content),
+        headers=headers(token),
+        content_type="multipart/form-data",
+    )
+
+    assert uploaded.status_code == 201, uploaded.get_json()
+    documents = uploaded.get_json()["data"]["documents"]
+    assert len(documents) == 3
+    assert [document["fields"]["invoice_number"] for document in documents] == ["1234", "5678", "4321"]
+    assert [document["fields"]["customer_name"] for document in documents] == [
+        "John Doe",
+        "Jane Smith",
+        "John Doe",
+    ]
+    assert all(document["source_filename"] == "sample_invoice.txt" for document in documents)
+    assert [document["record_index"] for document in documents] == [1, 2, 3]
+    assert all(document["record_count"] == 3 for document in documents)
+
+    searched = client.get(
+        "/api/v1/documents",
+        query_string={"q": "5678"},
+        headers=headers(token),
+    )
+    assert searched.status_code == 200
+    search_documents = searched.get_json()["data"]["documents"]
+    assert len(search_documents) == 1
+    assert search_documents[0]["fields"]["invoice_number"] == "5678"
+
+    downloaded = client.get(
+        f"/api/v1/documents/{documents[1]['id']}/download",
+        headers=headers(token),
+    )
+    assert downloaded.status_code == 200
+    assert downloaded.data == content.encode("utf-8")
+
+    reprocessed = client.post(
+        f"/api/v1/documents/{documents[1]['id']}/reprocess",
+        headers=headers(token),
+    )
+    assert reprocessed.status_code == 200, reprocessed.get_json()
+    assert reprocessed.get_json()["data"]["document"]["fields"]["invoice_number"] == "5678"
+
+
 def test_search_and_pagination_are_scoped_to_owner(client):
     token = register(client)
     files = {
