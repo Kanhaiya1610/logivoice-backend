@@ -18,6 +18,9 @@ binary files through a local-development or S3-compatible storage adapter.
   image OCR through pytesseract/Tesseract when available, TXT extraction, deterministic logistics
   classification, and regex-based invoice/customer/address/date/organization/location
   fields. Unsupported processor dependencies produce a persisted `failed` document status.
+- Deterministic logistics metadata: labeled subtotal/tax/total, currency, due date,
+  purchase-order/tracking references, carrier, and supported line-item tables/lists.
+  Exact decimal strings are kept in existing JSON fields; missing values are not inferred.
 - Owned document listing, filtering, pagination, detail, deletion, authenticated download,
   text search, optional document-grounded Gemini chat, and data-backed overview analytics.
 - Flask-Migrate/Alembic migrations. Production startup applies migrations; it does not
@@ -87,6 +90,12 @@ pagination, upload validation, and unavailable Gemini behavior. It does not call
 Gemini or S3 services.
 Chat diagnostics tests also mock provider errors, check request-ID correlation, and verify
 that keys, document contents, questions, and raw provider errors do not enter chat logs.
+
+For a manual extraction check, upload `tests/fixtures/invoice_with_logistics.txt` through
+the frontend. Expect subtotal `125.50`, tax `12.55`, total `138.05`, currency `USD`, and
+two line items. Reprocess an existing document to add the new fields after deployment.
+See [supported formats and limits](docs/API.md#logistics-metadata); complex OCR/table
+layouts may retain only extracted text rather than structured items.
 
 ## Deployment
 

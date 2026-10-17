@@ -8,6 +8,7 @@ import re
 from datetime import datetime, timezone
 
 from .barcode import decode_image, decode_pdf
+from .logistics import extract_logistics_fields
 from .nlp import classify_document, extract_entities
 
 
@@ -296,6 +297,7 @@ def extract_fields(text: str, entities: dict | None = None) -> dict:
         "date": date_value,
         "organizations": entities.get("organizations", []),
         "locations": entities.get("locations", []),
+        **extract_logistics_fields(text),
     }
 
 

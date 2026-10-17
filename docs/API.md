@@ -61,6 +61,57 @@ Fields include invoice number, customer, address, date, regex/spaCy entities, an
 Unavailable NLP/barcode dependencies use the regex/empty-list fallback and do not fail an
 otherwise valid document.
 
+## Logistics metadata
+
+New uploads and reprocessing also populate the following additive keys in `fields`:
+
+| Key | Value |
+| --- | --- |
+| `subtotal`, `tax`, `total` | Exact decimal strings, or `null` when missing, malformed, or conflicting. |
+| `currency` | Recognized uppercase ISO currency code, or `null` when unknown or conflicting. Bare `$`/`¥` alone is not enough. |
+| `due_date` | Explicitly labeled numeric or English-month date text, retained in its source format; no date-order inference. |
+| `purchase_order_number`, `tracking_number`, `carrier` | Explicitly labeled reference text; leading zeros are retained. Missing values are `null`. |
+| `line_items` | Array of `{description, sku, quantity, unit, unit_price, amount}`; empty when no supported rows are found. |
+
+For example, `fields` may include:
+
+```json
+{
+  "subtotal": "125.50",
+  "tax": "12.55",
+  "total": "138.05",
+  "currency": "USD",
+  "due_date": "October 31, 2026",
+  "purchase_order_number": "000042",
+  "tracking_number": "001234567890",
+  "carrier": "Example Carrier",
+  "line_items": [
+    {"description": "Widget A", "sku": "0007", "quantity": "2", "unit": "pcs", "unit_price": "50.00", "amount": "100.00"},
+    {"description": "Widget B", "sku": "SKU-0008", "quantity": "3", "unit": "pcs", "unit_price": "8.50", "amount": "25.50"}
+  ]
+}
+```
+
+Extraction uses the existing text/OCR result, with no new AI calls or schema migration.
+Each logical TXT record is processed separately. Supported products are explicit
+`Product List:`, `Items:`, or `Line Items:` sections such as `Widget A 10 pcs`, and
+pipe/tab/multiple-space tables with recognized Description/Product, SKU, Qty/Quantity,
+Unit, Unit Price, and Amount headers. Blank lines, new labels, or lost column alignment
+end a section. Missing cells are `null`; invalid numeric cells reject that row. At most
+200 items are returned. Arbitrary PDF/OCR table layouts are not reconstructed.
+
+Amounts preserve printed decimal precision: `1,234.50` and `1.234,50` normalize to
+`1234.50`. A lone separator followed by exactly three digits (for example `1,234` or
+`1.234`) is deliberately treated as ambiguous. Space-grouped numbers, exponents,
+percentages used as amounts, and accounting parentheses are unsupported. No missing
+prices, taxes, totals, or currencies are computed or guessed.
+
+Total label priority is Grand Total, Invoice Total, Total Amount, Amount Due, then Total.
+Total Tax outranks Tax/Sales Tax/VAT. Conflicting or malformed winning values remain
+`null`. Explicit due-date text is not calendar-validated. Unrecognized layouts remain
+available in `extracted_text` for review. Existing documents need **Reprocess** (or a
+new upload) to acquire these fields; reading an older record does not modify it.
+
 ## Ownership and errors
 
 Document IDs from another user are returned as 404 to avoid resource enumeration. Missing

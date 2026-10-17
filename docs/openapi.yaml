@@ -104,6 +104,12 @@ paths:
       - { $ref: '#/components/parameters/DocumentId' }
     get:
       tags: [Documents]
+      description: >-
+        Returns data.document with extracted_text and fields. Logistics fields include
+        subtotal, tax, total (decimal strings or null), currency, due_date,
+        purchase_order_number, tracking_number, carrier, and line_items (an array of
+        description, sku, quantity, unit, unit_price, amount objects). Missing scalar
+        values are null; older records may omit the additive fields until reprocessing.
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '401': { $ref: '#/components/responses/Unauthorized' }

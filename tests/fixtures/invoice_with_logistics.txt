@@ -1,0 +1,16 @@
+Invoice Number: INV-LOG-001
+Customer Name: Example Freight Ltd
+Delivery Address: 10 Example Road, Sample City
+Invoice Date: 2026-10-01
+Due Date: October 31, 2026
+Purchase Order Number: 000042
+Tracking Number: 001234567890
+Shipping Carrier: Example Carrier
+Currency: USD
+Line Items:
+SKU | Description | Qty | Unit | Unit Price | Amount
+0007 | Widget A | 2 | pcs | 50.00 | 100.00
+SKU-0008 | Widget B | 3 | pcs | 8.50 | 25.50
+Subtotal: 125.50
+Tax (10%): 12.55
+Grand Total: USD 138.05

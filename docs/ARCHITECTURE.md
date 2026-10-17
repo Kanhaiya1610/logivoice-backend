@@ -39,6 +39,10 @@ Versioned blueprint -> bearer auth -> ownership-scoped query
 - `app/services/nlp.py` returns JSON-safe people, organization, location, date, contact, and
   URL entities. `app/services/barcode.py` decodes QR/barcode symbols from images and rasterized
   PDF pages when `pyzbar` and the system ZBar library are available.
+- `app/services/logistics.py` extracts labeled totals, currencies, due dates, shipment/PO
+  references, and supported product-list/table rows from each logical text segment. It
+  preserves decimals as strings in the existing JSON fields and does not infer missing
+  financial values or make remote AI calls. See the supported formats in `API.md`.
 - `app/services/storage.py` provides the local and optional S3-compatible implementations.
   The factory rejects local storage in `APP_ENV=production` to avoid treating Render's
   ephemeral disk as durable storage.
